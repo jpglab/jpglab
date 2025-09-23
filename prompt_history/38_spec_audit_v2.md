@@ -1,3 +1,7 @@
+We've gotten the script almost working (`audit-ptp-constants.ts`), however nothing is getting exported to the markdown audit folder in docs. Read below for a reminder of the requirements. We're getting 100% coverage now so we should avoid changing too much of the **detection** logic, we just want to change the **extraction** logic.
+
+---
+
 # PTP Constants Documentation Audit Script
 
 ## **Prerequisites - MUST READ FIRST**

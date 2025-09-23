@@ -32,6 +32,14 @@ interface CategorySummary {
   missingConstants: MissingConstant[]
 }
 
+interface DocumentationBlock {
+  hexCode: string
+  constantName: string
+  content: string
+  startLine: number
+  endLine: number
+}
+
 // Configuration
 const CONFIG = {
   constantsPath: 'src/constants',
@@ -41,6 +49,63 @@ const CONFIG = {
   excludeFiles: [
     'vendor-ids.ts' // USB vendor IDs, not PTP constants
   ]
+}
+
+// Helper function for fuzzy string matching
+function fuzzyMatch(str1: string, str2: string): number {
+  // Normalize strings
+  const normalize = (s: string) => {
+    return s
+      .toLowerCase()
+      .replace(/[_\-\s]+/g, '') // Remove separators
+      .replace(/^(get|set|the|a|an)/g, '') // Remove common prefixes
+      .replace(/[^a-z0-9]/g, '') // Keep only alphanumeric
+  }
+  
+  const norm1 = normalize(str1)
+  const norm2 = normalize(str2)
+  
+  // Check for exact match
+  if (norm1 === norm2) return 1.0
+  
+  // Check if one contains the other
+  if (norm1.includes(norm2) || norm2.includes(norm1)) {
+    const minLen = Math.min(norm1.length, norm2.length)
+    const maxLen = Math.max(norm1.length, norm2.length)
+    return minLen / maxLen
+  }
+  
+  // Calculate Levenshtein distance
+  const distance = levenshteinDistance(norm1, norm2)
+  const maxLen = Math.max(norm1.length, norm2.length)
+  return Math.max(0, 1 - distance / maxLen)
+}
+
+function levenshteinDistance(str1: string, str2: string): number {
+  const len1 = str1.length
+  const len2 = str2.length
+  const matrix: number[][] = []
+  
+  for (let i = 0; i <= len1; i++) {
+    matrix[i] = [i]
+  }
+  
+  for (let j = 0; j <= len2; j++) {
+    matrix[0][j] = j
+  }
+  
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,    // deletion
+        matrix[i][j - 1] + 1,    // insertion
+        matrix[i - 1][j - 1] + cost // substitution
+      )
+    }
+  }
+  
+  return matrix[len1][len2]
 }
 
 // Extract hex codes from TypeScript source files
@@ -141,140 +206,330 @@ function determineCategory(filePath: string): ExtractedConstant['category'] {
   return 'property' // default
 }
 
-// Special check for data types in the ISO documentation
-async function checkDataTypeInISO(constant: ExtractedConstant): Promise<boolean> {
-  if (constant.category !== 'datatype' || constant.vendor !== 'iso') {
-    return false
-  }
-  
+// Extract ISO documentation block for a specific constant
+async function extractISODocBlock(constant: ExtractedConstant): Promise<DocumentationBlock | null> {
   const docContent = await fs.readFile(CONFIG.isoDocsPath, 'utf-8')
   const lines = docContent.split('\n')
   
-  // Find the data types table section
-  let inDataTypeTable = false
-  let tableStart = -1
-  let tableEnd = -1
-  
-  for (let i = 0; i < lines.length; i++) {
-    // Look for the start of the data types section
-    if (lines[i].includes('5.3 Simple types') || lines[i].includes('Table 3')) {
-      inDataTypeTable = true
-      tableStart = i
-    }
+  // Special handling for data types
+  if (constant.category === 'datatype') {
+    // Find the data types table section
+    let inDataTypeTable = false
+    let tableStart = -1
+    let tableEnd = -1
     
-    // If we're in the table, look for our hex code
-    if (inDataTypeTable) {
-      // Check for end of table (next major section or table)
-      if (i > tableStart + 5 && (
-        lines[i].match(/^#{1,2}\s+\d+\.\d+/) || // Next section number
-        lines[i].includes('Table 4') || // Next table
-        lines[i].includes('5.4') // Next subsection
-      )) {
-        tableEnd = i
-        break
+    for (let i = 0; i < lines.length; i++) {
+      // Look for the start of the data types section
+      if (lines[i].includes('5.3 Simple types') || lines[i].includes('Table 3')) {
+        inDataTypeTable = true
+        tableStart = i
+      }
+      
+      // If we're in the table, look for our hex code
+      if (inDataTypeTable) {
+        // Check for end of table (next major section or table)
+        if (i > tableStart + 5 && (
+          lines[i].match(/^#{1,2}\s+\d+\.\d+/) || // Next section number
+          lines[i].includes('Table 4') || // Next table
+          lines[i].includes('5.4') // Next subsection
+        )) {
+          tableEnd = i
+          break
+        }
       }
     }
+    
+    if (tableStart === -1) return null
+    if (tableEnd === -1) tableEnd = Math.min(tableStart + 100, lines.length)
+    
+    // Search for the hex code in the data types table section
+    const hexVariations = [
+      constant.hexCode.toLowerCase(),
+      constant.hexCode.toUpperCase(),
+      '0x' + constant.hexCode.substring(2).padStart(4, '0').toLowerCase(),
+      '0x' + constant.hexCode.substring(2).padStart(4, '0').toUpperCase()
+    ]
+    
+    for (const hex of hexVariations) {
+      for (let i = tableStart; i < tableEnd; i++) {
+        if (lines[i].includes(hex)) {
+          // Extract the row and surrounding context
+          const blockStart = Math.max(tableStart, i - 2)
+          const blockEnd = Math.min(tableEnd, i + 3)
+          return {
+            hexCode: constant.hexCode,
+            constantName: constant.constantName,
+            content: lines.slice(blockStart, blockEnd).join('\n'),
+            startLine: blockStart,
+            endLine: blockEnd
+          }
+        }
+      }
+    }
+    
+    return null
   }
   
-  if (tableStart === -1) return false
-  if (tableEnd === -1) tableEnd = Math.min(tableStart + 100, lines.length)
-  
-  // Search for the hex code in the data types table section
-  const tableContent = lines.slice(tableStart, tableEnd).join('\n')
-  
-  // Format the hex code to match table format (0x000A vs 0x000a)
+  // For other categories, search for hex code occurrences
   const hexVariations = [
-    constant.hexCode.toLowerCase(),
-    constant.hexCode.toUpperCase(),
-    // Pad with zeros if needed (0x1 -> 0x0001)
-    '0x' + constant.hexCode.substring(2).padStart(4, '0').toLowerCase(),
-    '0x' + constant.hexCode.substring(2).padStart(4, '0').toUpperCase()
-  ]
-  
-  for (const hex of hexVariations) {
-    if (tableContent.includes(hex)) {
-      return true
-    }
-  }
-  
-  return false
-}
-
-// Check if a constant exists in documentation
-async function checkDocumentation(constant: ExtractedConstant): Promise<{ found: boolean; searchAttempts: string[] }> {
-  // Special handling for ISO data types
-  if (constant.category === 'datatype' && constant.vendor === 'iso') {
-    const found = await checkDataTypeInISO(constant)
-    return { 
-      found, 
-      searchAttempts: ['Checked in Table 3 — Datatype codes'] 
-    }
-  }
-  
-  const docPath = constant.vendor === 'iso' ? CONFIG.isoDocsPath : CONFIG.sonyDocsPath
-  const docContent = await fs.readFile(docPath, 'utf-8')
-  const docContentLower = docContent.toLowerCase()
-  
-  // Try multiple variations of the hex code with case insensitive matching
-  const searchAttempts = [
     constant.hexCode,
     constant.hexCode.toLowerCase(),
     constant.hexCode.toUpperCase(),
-    constant.hexCode.replace('0x', '0X'),
-    // Add padded variations for 3-digit hex codes
-    constant.hexCode.length === 6 ? '0x0' + constant.hexCode.substring(2) : null,
-    constant.hexCode.length === 6 ? '0X0' + constant.hexCode.substring(2).toUpperCase() : null,
-  ].filter(Boolean) as string[]
-  
-  // Search for hex code
-  for (const searchTerm of searchAttempts) {
-    // Case-insensitive search
-    if (docContentLower.includes(searchTerm.toLowerCase())) {
-      return { found: true, searchAttempts }
-    }
-  }
-  
-  // If hex code not found, also try searching for the constant name with various formats
-  // This helps catch cases where documentation might reference by name
-  const nameVariations = [
-    constant.constantName,
-    constant.constantName.toLowerCase(),
-    constant.constantName.toUpperCase(),
-    // Convert snake_case to various formats
-    constant.constantName.replace(/_/g, ' '),
-    constant.constantName.replace(/_/g, ' ').toLowerCase(),
-    // Convert to camelCase
-    constant.constantName.toLowerCase().replace(/_([a-z])/g, (_, letter) => letter.toUpperCase()),
   ]
   
-  // Check if the hex code appears near any variation of the constant name
-  for (const nameVariation of nameVariations) {
-    const nameIndex = docContentLower.indexOf(nameVariation.toLowerCase())
-    if (nameIndex !== -1) {
-      // Check if hex code appears within 200 characters of the name
-      const contextStart = Math.max(0, nameIndex - 200)
-      const contextEnd = Math.min(docContent.length, nameIndex + 200)
-      const context = docContent.substring(contextStart, contextEnd).toLowerCase()
-      
-      for (const hexVariation of searchAttempts) {
-        if (context.includes(hexVariation.toLowerCase())) {
-          return { found: true, searchAttempts: [...searchAttempts, `Found near "${nameVariation}"`] }
+  const potentialBlocks: DocumentationBlock[] = []
+  
+  for (const hex of hexVariations) {
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes(hex)) {
+        // Find the section boundaries
+        let startLine = i
+        let endLine = i
+        
+        // Search backward for section header
+        for (let j = i - 1; j >= Math.max(0, i - 50); j--) {
+          if (lines[j].match(/^#{1,3}\s+/) || lines[j].match(/^\*\*[\d.]+\s+/)) {
+            startLine = j
+            break
+          }
+        }
+        
+        // Search forward for next section or significant break
+        for (let j = i + 1; j < Math.min(lines.length, i + 100); j++) {
+          if (lines[j].match(/^#{1,3}\s+/) || 
+              lines[j].match(/^\*\*[\d.]+\s+/) ||
+              lines[j].includes('**Table')) {
+            endLine = j
+            break
+          }
+        }
+        
+        // Extract heading if present
+        const headingMatch = lines[startLine].match(/^#{1,3}\s+(?:[\d.]+\s+)?(.+)/) ||
+                            lines[startLine].match(/^\*\*[\d.]+\s+(.+)\*\*/)
+        const heading = headingMatch ? headingMatch[1].trim() : ''
+        
+        // Calculate fuzzy match score
+        const fuzzyScore = fuzzyMatch(constant.constantName, heading)
+        
+        // Validate the block contains expected fields
+        const blockContent = lines.slice(startLine, endLine).join('\n')
+        let validationScore = 0
+        
+        if (constant.category === 'property' && blockContent.includes('DevicePropCode')) validationScore += 0.3
+        if (constant.category === 'operation' && blockContent.includes('OperationCode')) validationScore += 0.3
+        if (constant.category === 'event' && blockContent.includes('EventCode')) validationScore += 0.3
+        if (constant.category === 'response' && blockContent.includes('ResponseCode')) validationScore += 0.3
+        if (blockContent.includes('Description')) validationScore += 0.2
+        if (blockContent.includes('Data type')) validationScore += 0.1
+        
+        const totalScore = fuzzyScore * 0.6 + validationScore * 0.4
+        
+        if (totalScore > 0.3) { // Minimum threshold
+          potentialBlocks.push({
+            hexCode: constant.hexCode,
+            constantName: constant.constantName,
+            content: blockContent,
+            startLine,
+            endLine
+          })
         }
       }
     }
   }
   
-  return { found: false, searchAttempts }
+  // Return the best match
+  if (potentialBlocks.length > 0) {
+    // Sort by content length (prefer more complete blocks)
+    potentialBlocks.sort((a, b) => b.content.length - a.content.length)
+    return potentialBlocks[0]
+  }
+  
+  return null
+}
+
+// Extract Sony documentation block for a specific constant
+async function extractSonyDocBlock(constant: ExtractedConstant): Promise<DocumentationBlock | null> {
+  const docContent = await fs.readFile(CONFIG.sonyDocsPath, 'utf-8')
+  const lines = docContent.split('\n')
+  
+  const hexVariations = [
+    constant.hexCode,
+    constant.hexCode.toLowerCase(),
+    constant.hexCode.toUpperCase(),
+  ]
+  
+  const potentialBlocks: DocumentationBlock[] = []
+  
+  for (const hex of hexVariations) {
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes(hex)) {
+        // Find the section boundaries
+        let startLine = i
+        let endLine = i
+        
+        // Search backward for section header (# heading)
+        for (let j = i - 1; j >= Math.max(0, i - 30); j--) {
+          if (lines[j].match(/^#\s+/)) {
+            startLine = j
+            break
+          }
+        }
+        
+        // Search forward for next section
+        for (let j = i + 1; j < Math.min(lines.length, i + 100); j++) {
+          if (lines[j].match(/^#\s+/) && j > startLine) {
+            endLine = j
+            break
+          }
+        }
+        
+        // Extract heading
+        const headingMatch = lines[startLine].match(/^#\s+(.+)/)
+        const heading = headingMatch ? headingMatch[1].trim() : ''
+        
+        // Calculate fuzzy match score
+        const fuzzyScore = fuzzyMatch(constant.constantName, heading)
+        
+        // Validate the block
+        const blockContent = lines.slice(startLine, endLine).join('\n')
+        let validationScore = 0
+        
+        if (blockContent.includes('PropertyCode')) validationScore += 0.3
+        if (blockContent.includes('Operation Code')) validationScore += 0.3
+        if (blockContent.includes('Event Code')) validationScore += 0.3
+        if (blockContent.includes('ControlCode')) validationScore += 0.3
+        if (blockContent.includes('Summary')) validationScore += 0.2
+        if (blockContent.includes('Description')) validationScore += 0.2
+        
+        const totalScore = fuzzyScore * 0.6 + validationScore * 0.4
+        
+        if (totalScore > 0.3) { // Minimum threshold
+          potentialBlocks.push({
+            hexCode: constant.hexCode,
+            constantName: constant.constantName,
+            content: blockContent,
+            startLine,
+            endLine
+          })
+        }
+      }
+    }
+  }
+  
+  // Return the best match
+  if (potentialBlocks.length > 0) {
+    // Sort by fuzzy match score and content length
+    potentialBlocks.sort((a, b) => b.content.length - a.content.length)
+    return potentialBlocks[0]
+  }
+  
+  return null
+}
+
+// Save documentation block to markdown file
+async function saveDocumentationBlock(constant: ExtractedConstant, block: DocumentationBlock): Promise<void> {
+  const vendor = constant.vendor
+  const outputDir = path.join(CONFIG.outputPath, vendor)
+  await fs.mkdir(outputDir, { recursive: true })
+  
+  // Clean the constant name for filename
+  const cleanName = constant.constantName
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .toUpperCase()
+  
+  const filename = `${constant.hexCode}_${cleanName}.md`
+  const filepath = path.join(outputDir, filename)
+  
+  // Add metadata header
+  const content = `# ${constant.constantName} (${constant.hexCode})
+
+**Category**: ${constant.category}
+**Vendor**: ${vendor}
+**Source File**: ${constant.sourceFile}
+
+---
+
+${block.content}
+`
+  
+  await fs.writeFile(filepath, content)
+}
+
+// Check if a constant exists in documentation and extract if found
+async function checkAndExtractDocumentation(constant: ExtractedConstant): Promise<{ found: boolean; searchAttempts: string[]; extracted: boolean }> {
+  // Special handling for ISO data types
+  if (constant.category === 'datatype' && constant.vendor === 'iso') {
+    const block = await extractISODocBlock(constant)
+    if (block) {
+      await saveDocumentationBlock(constant, block)
+      return { 
+        found: true, 
+        searchAttempts: ['Checked in Table 3 — Datatype codes'],
+        extracted: true
+      }
+    }
+    return { 
+      found: false, 
+      searchAttempts: ['Checked in Table 3 — Datatype codes'],
+      extracted: false
+    }
+  }
+  
+  // Extract documentation block based on vendor
+  const block = constant.vendor === 'iso' 
+    ? await extractISODocBlock(constant)
+    : await extractSonyDocBlock(constant)
+  
+  if (block) {
+    await saveDocumentationBlock(constant, block)
+    return {
+      found: true,
+      searchAttempts: [`Found and extracted documentation block`],
+      extracted: true
+    }
+  }
+  
+  // If not found, check if hex code exists anywhere in the doc
+  const docPath = constant.vendor === 'iso' ? CONFIG.isoDocsPath : CONFIG.sonyDocsPath
+  const docContent = await fs.readFile(docPath, 'utf-8')
+  const docContentLower = docContent.toLowerCase()
+  
+  const searchAttempts = [
+    constant.hexCode,
+    constant.hexCode.toLowerCase(),
+    constant.hexCode.toUpperCase(),
+  ]
+  
+  for (const searchTerm of searchAttempts) {
+    if (docContentLower.includes(searchTerm.toLowerCase())) {
+      return { 
+        found: true, 
+        searchAttempts: [...searchAttempts, 'Found hex but could not extract clean block'],
+        extracted: false
+      }
+    }
+  }
+  
+  return { 
+    found: false, 
+    searchAttempts,
+    extracted: false
+  }
 }
 
 // Analyze missing constants by category
 async function analyzeMissingConstants(): Promise<Map<string, CategorySummary>> {
-  console.log('🔍 PTP Constants Documentation Audit - Final Version')
-  console.log('====================================================\n')
-  console.log('Special handling:')
-  console.log('- ISO Data Types (Table 3 — Datatype codes)')
-  console.log('- Case-insensitive hex code matching')
-  console.log('- Excluding USB vendor IDs (not PTP constants)\n')
+  console.log('🔍 PTP Constants Documentation Audit - With Individual Extraction')
+  console.log('================================================================\n')
+  
+  // Clean output directory
+  const isoDir = path.join(CONFIG.outputPath, 'iso')
+  const sonyDir = path.join(CONFIG.outputPath, 'sony')
+  await fs.rm(isoDir, { recursive: true, force: true })
+  await fs.rm(sonyDir, { recursive: true, force: true })
+  await fs.mkdir(isoDir, { recursive: true })
+  await fs.mkdir(sonyDir, { recursive: true })
   
   // Extract all constants
   console.log('📋 Extracting constants from source files...')
@@ -290,7 +545,7 @@ async function analyzeMissingConstants(): Promise<Map<string, CategorySummary>> 
   })
   
   // Analyze each group
-  console.log('🔎 Checking documentation...')
+  console.log('🔎 Checking documentation and extracting blocks...')
   const summaries = new Map<string, CategorySummary>()
   
   // Sort keys for consistent output
@@ -305,6 +560,7 @@ async function analyzeMissingConstants(): Promise<Map<string, CategorySummary>> 
   
   let processedCount = 0
   const totalConstants = constants.length
+  let totalExtracted = 0
   
   for (const key of sortedKeys) {
     const groupConstants = grouped.get(key)!
@@ -314,6 +570,7 @@ async function analyzeMissingConstants(): Promise<Map<string, CategorySummary>> 
     
     const missingConstants: MissingConstant[] = []
     let found = 0
+    let extracted = 0
     
     // Sort constants by hex code for consistent output
     const sortedConstants = groupConstants.sort((a, b) => 
@@ -322,13 +579,18 @@ async function analyzeMissingConstants(): Promise<Map<string, CategorySummary>> 
     
     for (const constant of sortedConstants) {
       processedCount++
-      const progressPercent = Math.round((processedCount / totalConstants) * 100)
       process.stdout.write(`   [${processedCount}/${totalConstants}] ${constant.hexCode} (${constant.constantName})... `)
       
-      const result = await checkDocumentation(constant)
+      const result = await checkAndExtractDocumentation(constant)
       if (result.found) {
         found++
-        process.stdout.write('✅\n')
+        if (result.extracted) {
+          extracted++
+          totalExtracted++
+          process.stdout.write('✅ (extracted)\n')
+        } else {
+          process.stdout.write('✅ (found but not extracted)\n')
+        }
       } else {
         missingConstants.push({
           hexCode: constant.hexCode,
@@ -355,20 +617,21 @@ async function analyzeMissingConstants(): Promise<Map<string, CategorySummary>> 
       missingConstants
     })
     
-    console.log(`   Summary: ${found}/${total} found (${percentage.toFixed(1)}%)`)
+    console.log(`   Summary: ${found}/${total} found (${percentage.toFixed(1)}%), ${extracted} blocks extracted`)
   }
+  
+  console.log(`\n📦 Total documentation blocks extracted: ${totalExtracted}`)
   
   return summaries
 }
 
 // Generate comprehensive report
 async function generateReport(summaries: Map<string, CategorySummary>): Promise<void> {
-  let report = `# PTP Constants Documentation Coverage Report - Final
+  let report = `# PTP Constants Documentation Coverage Report
 Generated: ${new Date().toISOString()}
 
 This report provides a comprehensive analysis of PTP constants documentation coverage.
-USB vendor IDs have been excluded as they are not PTP protocol constants.
-Special handling has been implemented for ISO Data Types (Table 3) and case variations.
+Individual documentation blocks have been extracted to \`docs/audit/iso/\` and \`docs/audit/sony/\`.
 
 ## Summary
 
@@ -485,92 +748,9 @@ Special handling has been implemented for ISO Data Types (Table 3) and case vari
     }
   }
   
-  // Analysis section
-  report += `## Analysis\n\n`
-  
-  report += `### Coverage by Category\n\n`
-  
-  // Find best and worst coverage
-  const allSummaries = Array.from(summaries.values())
-  const perfectCoverage = allSummaries.filter(s => s.percentage === 100)
-  const goodCoverage = allSummaries.filter(s => s.percentage >= 80 && s.percentage < 100)
-  const poorCoverage = allSummaries.filter(s => s.percentage < 80)
-  
-  if (perfectCoverage.length > 0) {
-    report += `#### ✅ Perfect Coverage (100%)\n\n`
-    for (const summary of perfectCoverage) {
-      report += `- **${summary.vendor.toUpperCase()} ${summary.category}**: All ${summary.total} constants documented\n`
-    }
-    report += `\n`
-  }
-  
-  if (goodCoverage.length > 0) {
-    report += `#### 🟡 Good Coverage (80-99%)\n\n`
-    for (const summary of goodCoverage) {
-      report += `- **${summary.vendor.toUpperCase()} ${summary.category}**: ${summary.percentage.toFixed(1)}% (${summary.missing} missing)\n`
-    }
-    report += `\n`
-  }
-  
-  if (poorCoverage.length > 0) {
-    report += `#### ❌ Needs Attention (<80%)\n\n`
-    for (const summary of poorCoverage) {
-      report += `- **${summary.vendor.toUpperCase()} ${summary.category}**: ${summary.percentage.toFixed(1)}% (${summary.missing} missing)\n`
-    }
-    report += `\n`
-  }
-  
-  report += `### Key Findings\n\n`
-  
-  // Data type specific findings
-  const datatypeSummary = summaries.get('iso-datatype')
-  if (datatypeSummary && datatypeSummary.missingConstants.length > 0) {
-    report += `#### Data Types\n`
-    report += `- ${datatypeSummary.found} of ${datatypeSummary.total} ISO data types found in Table 3\n`
-    if (datatypeSummary.missingConstants.some(c => c.constantName.includes('128'))) {
-      report += `- 128-bit integer types may not be supported in all PTP implementations\n`
-    }
-    report += `\n`
-  }
-  
-  // Vendor-specific findings
-  if (sonyMissing > 0) {
-    report += `#### Vendor Extensions\n`
-    report += `- Sony extensions have ${sonyPercentage.toFixed(1)}% coverage\n`
-    const sonyEvents = summaries.get('sony-event')
-    const sonyResponses = summaries.get('sony-response')
-    if (sonyEvents && sonyEvents.percentage === 0) {
-      report += `- Sony events appear to be custom implementations not in public docs\n`
-    }
-    if (sonyResponses && sonyResponses.percentage === 0) {
-      report += `- Sony response codes are vendor-specific error conditions\n`
-    }
-    report += `\n`
-  }
-  
-  report += `### Notes\n\n`
-  report += `- **Excluded Files**: USB vendor IDs (vendor-ids.ts) are not PTP constants\n`
-  report += `- **Data Types**: Checked against Table 3 in Section 5.3 of ISO 15740\n`
-  report += `- **Case Sensitivity**: Hex codes are matched case-insensitively\n\n`
-  
-  if (overallPercentage < 80) {
-    report += `### Recommendations\n\n`
-    report += `1. **Priority Areas**: Focus on categories with <80% coverage\n`
-    report += `2. **Data Types**: Verify Table 3 contains all required type definitions\n`
-    report += `3. **Vendor Docs**: Check for updated Sony documentation or SDK references\n`
-    report += `4. **Code Review**: Verify constants are correctly categorized in source files\n`
-    report += `5. **Documentation**: Consider marking internal-only constants in code comments\n`
-  } else {
-    report += `### Success! 🎉\n\n`
-    report += `Documentation coverage exceeds the 80% threshold.\n`
-    report += `- ISO Standard: ${isoPercentage.toFixed(1)}% coverage\n`
-    report += `- Sony Extensions: ${sonyPercentage.toFixed(1)}% coverage\n`
-    report += `- Overall: ${overallPercentage.toFixed(1)}% coverage\n`
-  }
-  
   // Write report
   await fs.mkdir(CONFIG.outputPath, { recursive: true })
-  const reportPath = path.join(CONFIG.outputPath, 'ptp-constants-coverage-final.md')
+  const reportPath = path.join(CONFIG.outputPath, 'ptp-constants-coverage.md')
   await fs.writeFile(reportPath, report)
   console.log(`\n📄 Report saved to: ${reportPath}`)
   
@@ -615,7 +795,7 @@ Special handling has been implemented for ISO Data Types (Table 3) and case vari
     }
   }
   
-  const jsonPath = path.join(CONFIG.outputPath, 'ptp-constants-coverage-final.json')
+  const jsonPath = path.join(CONFIG.outputPath, 'ptp-constants-coverage.json')
   await fs.writeFile(jsonPath, JSON.stringify(jsonData, null, 2))
   console.log(`📊 JSON data saved to: ${jsonPath}`)
 }
@@ -643,6 +823,7 @@ async function main() {
     
     if (coverage >= 80) {
       console.log('\n🎉 Congratulations! Documentation coverage meets requirements.')
+      console.log('📁 Documentation blocks have been extracted to docs/audit/')
     } else {
       console.log('\n⚠️  Coverage is below 80% threshold.')
       console.log('Review the detailed report for missing constants.')
