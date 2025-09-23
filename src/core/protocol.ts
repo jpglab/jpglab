@@ -9,7 +9,6 @@ import { PTPOperations } from '@constants/ptp/operations'
 import { PTPResponses } from '@constants/ptp/responses'
 import { PTPError } from '@constants/ptp/errors'
 import { PTP_LIMITS } from '@constants/ptp/containers'
-import { SonyOperations } from '@constants/vendors/sony/operations'
 import { Operation, Response, Event, HexCode } from '@constants/types'
 
 /**
@@ -55,7 +54,6 @@ export interface ProtocolInterface {
      */
     reset(): Promise<void>
 }
-
 
 export class PTPProtocol implements ProtocolInterface {
     private sessionId: HexCode | null = null
@@ -146,28 +144,25 @@ export class PTPProtocol implements ProtocolInterface {
 
         const transactionId = this.messageBuilder.getNextTransactionId()
 
-        // Determine if this operation expects data if not explicitly set
-        const hasDataPhase =
-            operation.hasDataPhase !== undefined
-                ? operation.hasDataPhase
-                : this.expectsDataIn(operation.code) || operation.data !== undefined
-
         // Send command phase
         // Convert parameters to runtime format if needed
-        const runtimeParams = Array.isArray(operation.parameters) && operation.parameters.length > 0 && typeof operation.parameters[0] === 'number'
-            ? operation.parameters as number[]
-            : []
+        const runtimeParams =
+            Array.isArray(operation.parameters) &&
+            operation.parameters.length > 0 &&
+            typeof operation.parameters[0] === 'number'
+                ? (operation.parameters as number[])
+                : []
         const command = this.messageBuilder.buildCommand(operation.code, runtimeParams)
         await this.transport.send(command)
 
         // Handle data phase if present
         let receivedData: Uint8Array | undefined
 
-        if (hasDataPhase && operation.data) {
+        if (operation.expectsData) {
             // Send data (data-out operation)
-            const dataMessage = this.messageBuilder.buildData(operation.code, operation.data)
+            const dataMessage = this.messageBuilder.buildData(operation.code, operation.data || new Uint8Array())
             await this.transport.send(dataMessage)
-        } else if (hasDataPhase) {
+        } else if (operation.respondsWithData) {
             // Receive data (data-in operation)
             // Use maxDataLength if specified, otherwise use default
             const maxLength = operation.maxDataLength || PTP_LIMITS.DEFAULT_DATA_SIZE
@@ -225,21 +220,6 @@ export class PTPProtocol implements ProtocolInterface {
     }
 
     /**
-     * Check if an operation expects to receive data
-     */
-    private expectsDataIn(operationCode: number): boolean {
-        // Check PTP operations
-        const ptpOp = Object.values(PTPOperations).find(op => op.code === operationCode)
-        if (ptpOp && 'dataIn' in ptpOp) return ptpOp.dataIn === true
-        
-        // Check Sony operations
-        const sonyOp = Object.values(SonyOperations).find(op => op.code === operationCode)
-        if (sonyOp && 'dataIn' in sonyOp) return sonyOp.dataIn === true
-        
-        return false
-    }
-
-    /**
      * Reset the protocol state
      */
     async reset(): Promise<void> {
@@ -257,42 +237,7 @@ export class PTPProtocol implements ProtocolInterface {
     async getDeviceInfo(): Promise<Response> {
         return this.sendOperation({
             code: PTPOperations.GET_DEVICE_INFO.code,
-            hasDataPhase: true,
+            respondsWithData: true,
         })
     }
-
-    /**
-     * Helper to send simple commands without data phase
-     */
-    async sendCommand(code: HexCode, parameters?: HexCode[]): Promise<Response> {
-        return this.sendOperation({
-            code,
-            parameters,
-            hasDataPhase: false,
-        })
-    }
-
-    /**
-     * Helper to send commands that receive data
-     */
-    async sendCommandReceiveData(code: HexCode, parameters?: HexCode[]): Promise<Response> {
-        return this.sendOperation({
-            code,
-            parameters,
-            hasDataPhase: true,
-        })
-    }
-
-    /**
-     * Helper to send commands that send data
-     */
-    async sendCommandWithData(code: HexCode, parameters: HexCode[], data: Uint8Array): Promise<Response> {
-        return this.sendOperation({
-            code,
-            parameters,
-            data,
-            hasDataPhase: true,
-        })
-    }
-
 }

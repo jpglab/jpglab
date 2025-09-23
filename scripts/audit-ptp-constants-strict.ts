@@ -20,6 +20,11 @@ interface MissingConstant {
   category: string
   sourceFile: string
   searchAttempts: string[]
+  closestMatch?: {
+    heading: string
+    content: string
+    reasons: string[]
+  }
 }
 
 interface CategorySummary {
@@ -40,6 +45,8 @@ interface DocumentationBlock {
   content: string
   startLine: number
   endLine: number
+  heading?: string
+  matchConfidence: number
 }
 
 // Configuration
@@ -50,12 +57,14 @@ const CONFIG = {
   outputPath: 'docs/audit',
   excludeFiles: [
     'vendor-ids.ts' // USB vendor IDs, not PTP constants
-  ]
+  ],
+  fuzzyThreshold: 0.6,
+  strictMode: true // Enable strict matching criteria
 }
 
 // Helper function for fuzzy string matching
 function fuzzyMatch(str1: string, str2: string): number {
-  // Normalize strings
+  // Normalize strings more aggressively
   const normalize = (s: string) => {
     return s
       .toLowerCase()
@@ -208,130 +217,123 @@ function determineCategory(filePath: string): ExtractedConstant['category'] {
   return 'property' // default
 }
 
-// Extract ISO documentation block for a specific constant
-async function extractISODocBlock(constant: ExtractedConstant): Promise<DocumentationBlock | null> {
-  const docContent = await fs.readFile(CONFIG.isoDocsPath, 'utf-8')
-  const lines = docContent.split('\n')
-  
-  // Special handling for data types and formats (they're in tables)
-  if (constant.category === 'datatype' || constant.category === 'format') {
-    // Find the relevant table section
-    let inTable = false
-    let tableStart = -1
-    let tableEnd = -1
-    
-    // Different search patterns for different categories
-    const searchPatterns = constant.category === 'datatype' 
-      ? ['5.3 Simple types', 'listed in Table 3', 'Table 3 —']
-      : ['Table 18', 'ObjectFormatCodes', '6.3 ObjectFormatCodes']
-    
-    for (let i = 0; i < lines.length; i++) {
-      // Look for the start of the section
-      if (searchPatterns.some(pattern => lines[i].includes(pattern))) {
-        inTable = true
-        tableStart = i
-      }
-      
-      // If we're in the table, look for the end
-      if (inTable) {
-        // Check for end of table (next major section or table)
-        if (i > tableStart + 5 && (
-          lines[i].match(/^#{1,2}\s+\d+\.\d+/) || // Next section number
-          lines[i].match(/Table \d+(?!\s*—)/) || // Next table (but not continuation of current)
-          (constant.category === 'datatype' && lines[i].includes('5.4')) || // Next subsection for datatypes
-          (constant.category === 'format' && lines[i].includes('6.4')) // Next subsection for formats
-        )) {
-          tableEnd = i
-          break
-        }
-      }
+// Helper to identify if a line is a heading
+function isHeading(line: string): { isHeading: boolean; level: number; text: string } {
+  // Check for markdown headings
+  const mdHeading = line.match(/^(#{1,6})\s+(.+)/)
+  if (mdHeading) {
+    return {
+      isHeading: true,
+      level: mdHeading[1].length,
+      text: mdHeading[2].replace(/\*+/g, '').trim()
     }
-    
-    if (tableStart === -1) return null
-    if (tableEnd === -1) tableEnd = Math.min(tableStart + 200, lines.length) // Formats table is larger
-    
-    // Search for the hex code in the table section
-    const hexVariations = [
-      constant.hexCode.toLowerCase(),
-      constant.hexCode.toUpperCase(),
-      '0x' + constant.hexCode.substring(2).padStart(4, '0').toLowerCase(),
-      '0x' + constant.hexCode.substring(2).padStart(4, '0').toUpperCase()
-    ]
-    
-    for (const hex of hexVariations) {
-      for (let i = tableStart; i < tableEnd; i++) {
-        if (lines[i].includes(hex)) {
-          // Extract the row and surrounding context (including table header if close)
-          const blockStart = Math.max(tableStart, i - 5)
-          const blockEnd = Math.min(tableEnd, i + 3)
-          return {
-            hexCode: constant.hexCode,
-            constantName: constant.constantName,
-            content: lines.slice(blockStart, blockEnd).join('\n'),
-            startLine: blockStart,
-            endLine: blockEnd
-          }
-        }
-      }
-    }
-    
-    return null
   }
   
-  // For other categories, search for hex code occurrences
+  // Check for bold headings (often used as subsection headers)
+  const boldHeading = line.match(/^\*\*([^*]+)\*\*\s*$/)
+  if (boldHeading) {
+    return {
+      isHeading: true,
+      level: 7, // Consider bold as lower level than markdown headings
+      text: boldHeading[1].trim()
+    }
+  }
+  
+  // Check for section numbers as headings
+  const sectionHeading = line.match(/^(\d+(?:\.\d+)*)\s+(.+)/)
+  if (sectionHeading) {
+    return {
+      isHeading: true,
+      level: sectionHeading[1].split('.').length,
+      text: sectionHeading[2].trim()
+    }
+  }
+  
+  return { isHeading: false, level: 0, text: '' }
+}
+
+// Helper to detect if a block is likely an overview/compatibility table
+function isOverviewTable(content: string, targetHex: string): boolean {
+  const lines = content.split('\n')
+  const hexPattern = /0x[0-9A-Fa-f]{4}/gi
+  let hexCodes = new Set<string>()
+  
+  // Count unique hex codes in the block
+  for (const line of lines) {
+    const matches = line.match(hexPattern)
+    if (matches) {
+      matches.forEach(m => hexCodes.add(m.toLowerCase()))
+    }
+  }
+  
+  // If there are many different hex codes, it's likely an overview table
+  // Allow up to 3 hex codes (the target might appear multiple times, plus maybe one reference)
+  return hexCodes.size > 3
+}
+
+// Unified strict extraction for both ISO and Sony
+async function extractDocBlockStrict(
+  constant: ExtractedConstant,
+  docPath: string
+): Promise<{ block: DocumentationBlock | null; debugInfo?: any }> {
+  const docContent = await fs.readFile(docPath, 'utf-8')
+  const lines = docContent.split('\n')
+  
+  // Special handling for datatypes and formats in tables
+  if ((constant.category === 'datatype' || constant.category === 'format') && constant.vendor === 'iso') {
+    return extractFromTable(constant, lines)
+  }
+  
   const hexVariations = [
     constant.hexCode,
     constant.hexCode.toLowerCase(),
     constant.hexCode.toUpperCase(),
   ]
   
-  const potentialBlocks: DocumentationBlock[] = []
+  const candidates: Array<{
+    block: DocumentationBlock
+    score: number
+    reasons: string[]
+    isOverviewTable: boolean
+  }> = []
   
+  // Find all occurrences of the hex code
   for (const hex of hexVariations) {
     for (let i = 0; i < lines.length; i++) {
-      // Check if this line contains our exact hex code (not as substring)
+      // Check for hex code with word boundaries
       const hexRegex = new RegExp(`\\b${hex.replace('0x', '0x')}\\b`, 'i')
       if (!hexRegex.test(lines[i])) continue
       
-      // Check the context around the hex code to ensure it's the right type
-      const contextStart = Math.max(0, i - 3)
-      const contextEnd = Math.min(lines.length, i + 3)
-      const context = lines.slice(contextStart, contextEnd).join('\n')
+      // Find the heading before this hex code
+      let headingLine = -1
+      let heading = ''
+      let headingLevel = 999
       
-      // Verify this is the right type of constant
-      let isCorrectType = false
-      if (constant.category === 'property' && context.includes('DevicePropCode')) isCorrectType = true
-      else if (constant.category === 'operation' && context.includes('OperationCode')) isCorrectType = true
-      else if (constant.category === 'event' && context.includes('EventCode')) isCorrectType = true
-      else if (constant.category === 'response' && context.includes('ResponseCode')) isCorrectType = true
-      else if (constant.category === 'format' && context.includes('ObjectFormatCode')) isCorrectType = true
-      
-      if (!isCorrectType) continue
-      
-      // Find the section boundaries
-      let startLine = i
-      let endLine = i
-      
-      // Search backward for section header - be more precise
-      for (let j = i - 1; j >= Math.max(0, i - 20); j--) {
-        // Look for section headers with numbers
-        if (lines[j].match(/^#{1,4}\s+\*?\*?[\d.]+\s+/) || 
-            lines[j].match(/^\*\*[\d.]+\s+/) ||
-            (lines[j].match(/^#{1,4}\s+/) && j === i - 1)) { // If header is immediately before
-          startLine = j
+      for (let j = i - 1; j >= Math.max(0, i - 50); j--) {
+        const headingInfo = isHeading(lines[j])
+        if (headingInfo.isHeading) {
+          headingLine = j
+          heading = headingInfo.text
+          headingLevel = headingInfo.level
           break
         }
       }
       
-      // Search forward for next section - stop at next heading with a hex code
-      for (let j = i + 1; j < Math.min(lines.length, i + 100); j++) {
-        // Check if next section starts (has a heading and different hex code)
-        if (lines[j].match(/^#{1,4}\s+\*?\*?[\d.]+\s+/) || 
-            lines[j].match(/^\*\*[\d.]+\s+/)) {
-          // Check if the next few lines contain a different hex code
+      // If no heading found, this is not a valid block
+      if (headingLine === -1) {
+        continue
+      }
+      
+      // Find the end of this block (next heading at same or higher level)
+      let endLine = i + 1
+      for (let j = i + 1; j < Math.min(lines.length, i + 200); j++) {
+        const nextHeading = isHeading(lines[j])
+        if (nextHeading.isHeading && nextHeading.level <= headingLevel) {
+          // Check if this new section has a different hex code
           let hasOtherHex = false
-          for (let k = j; k < Math.min(j + 5, lines.length); k++) {
-            if (lines[k].match(/0x[0-9A-Fa-f]{4}/) && !lines[k].includes(hex)) {
+          for (let k = j; k < Math.min(j + 10, lines.length); k++) {
+            const otherHexMatch = lines[k].match(/0x[0-9A-Fa-f]{4}/i)
+            if (otherHexMatch && !hexVariations.includes(otherHexMatch[0])) {
               hasOtherHex = true
               break
             }
@@ -343,265 +345,278 @@ async function extractISODocBlock(constant: ExtractedConstant): Promise<Document
         }
       }
       
-      // Extract heading if present
-      const headingMatch = lines[startLine].match(/^#{1,4}\s+\*?\*?(?:[\d.]+\s+)?(.+?)\*?\*?$/) ||
-                          lines[startLine].match(/^\*\*[\d.]+\s+(.+)\*\*/)
-      const heading = headingMatch ? headingMatch[1].trim() : ''
+      // Extract block content
+      const blockContent = lines.slice(headingLine, endLine).join('\n')
       
-      // Calculate fuzzy match score
-      const fuzzyScore = fuzzyMatch(constant.constantName, heading)
+      // Check if this is an overview table
+      const isOverview = isOverviewTable(blockContent, constant.hexCode)
       
-      // Extract and validate the block
-      const blockContent = lines.slice(startLine, endLine).join('\n')
+      // Strict validation criteria
+      const validationReasons: string[] = []
+      let validationScore = 0
       
-      // Additional validation - ensure we have the right hex code prominently
+      // Penalize overview tables heavily
+      if (isOverview) {
+        validationScore -= 0.5
+        validationReasons.push('✗ Appears to be an overview/compatibility table (multiple hex codes)')
+      }
+      
+      // 1. Check heading matches constant name
+      const headingScore = fuzzyMatch(constant.constantName, heading)
+      
+      // Give better scores based on match quality
+      if (headingScore >= 0.8) {
+        validationScore += 0.4  // Excellent match
+        validationReasons.push(`✓ Excellent heading match: "${heading}" ~ "${constant.constantName}" (${(headingScore * 100).toFixed(0)}%)`)
+      } else if (headingScore >= 0.7) {
+        validationScore += 0.3  // Good match
+        validationReasons.push(`✓ Good heading match: "${heading}" ~ "${constant.constantName}" (${(headingScore * 100).toFixed(0)}%)`)
+      } else if (headingScore >= 0.5) {
+        validationScore += 0.1  // Weak match
+        validationReasons.push(`⚠ Weak heading match: "${heading}" ~ "${constant.constantName}" (${(headingScore * 100).toFixed(0)}%)`)
+      } else {
+        // Poor match - likely wrong section
+        validationReasons.push(`✗ Heading mismatch: "${heading}" !~ "${constant.constantName}" (${(headingScore * 100).toFixed(0)}%)`)
+        // Special case: if heading is generic like "Controls", "Properties", "Operations", penalize
+        if (['controls', 'properties', 'operations', 'events', 'summary', 'overview'].includes(heading.toLowerCase())) {
+          validationScore -= 0.2
+          validationReasons.push(`✗ Generic heading suggests overview section`)
+        }
+      }
+      
+      // 2. Check for correct field type based on category and vendor
+      if (constant.vendor === 'iso') {
+        if (constant.category === 'property' && blockContent.includes('DevicePropCode')) {
+          validationScore += 0.2
+          validationReasons.push('✓ Contains DevicePropCode field')
+        } else if (constant.category === 'operation' && blockContent.includes('OperationCode')) {
+          validationScore += 0.2
+          validationReasons.push('✓ Contains OperationCode field')
+        } else if (constant.category === 'event' && blockContent.includes('EventCode')) {
+          validationScore += 0.2
+          validationReasons.push('✓ Contains EventCode field')
+        } else if (constant.category === 'response' && blockContent.includes('ResponseCode')) {
+          validationScore += 0.2
+          validationReasons.push('✓ Contains ResponseCode field')
+        } else {
+          validationReasons.push(`✗ Missing expected ${constant.category} field type`)
+        }
+      } else if (constant.vendor === 'sony') {
+        if (constant.category === 'property' && blockContent.includes('PropertyCode')) {
+          validationScore += 0.2
+          validationReasons.push('✓ Contains PropertyCode field')
+        } else if (constant.category === 'operation' && blockContent.includes('Operation Code')) {
+          validationScore += 0.2
+          validationReasons.push('✓ Contains Operation Code field')
+        } else if (constant.category === 'event' && blockContent.includes('Event Code')) {
+          validationScore += 0.2
+          validationReasons.push('✓ Contains Event Code field')
+        } else if (constant.category === 'control' && blockContent.includes('ControlCode')) {
+          validationScore += 0.2
+          validationReasons.push('✓ Contains ControlCode field')
+        } else {
+          validationReasons.push(`✗ Missing expected ${constant.category} field type`)
+        }
+      }
+      
+      // 3. Check for required content sections
+      const hasDescription = blockContent.includes('Description') || blockContent.includes('Summary')
+      const hasDataType = blockContent.includes('Data type') || blockContent.includes('Datatype')
+      const hasTable = blockContent.includes('|') && blockContent.split('|').length > 5
+      
+      if (hasDescription) {
+        validationScore += 0.1
+        validationReasons.push('✓ Contains Description/Summary')
+      } else {
+        validationReasons.push('✗ No Description/Summary section')
+      }
+      
+      if (hasDataType || hasTable) {
+        validationScore += 0.1
+        validationReasons.push('✓ Contains data type info or table')
+      }
+      
+      // 4. Check hex code prominence
       const hexCount = (blockContent.match(new RegExp(hex, 'gi')) || []).length
-      if (hexCount === 0) continue
+      if (hexCount >= 1) {
+        validationScore += 0.1
+        validationReasons.push(`✓ Hex code appears ${hexCount} time(s)`)
+      } else {
+        validationReasons.push('✗ Hex code not found in block')
+      }
       
-      let validationScore = 0.5 // Base score since we already verified type
-      if (blockContent.includes('Description')) validationScore += 0.2
-      if (blockContent.includes('Parameter')) validationScore += 0.1
-      if (blockContent.includes('Response')) validationScore += 0.1
-      if (blockContent.includes('Data type')) validationScore += 0.1
+      // 5. Check content length and quality
+      const contentLength = blockContent.length
+      if (contentLength >= 150) {
+        validationScore += 0.1
+        validationReasons.push(`✓ Sufficient content (${contentLength} chars)`)
+      } else {
+        validationReasons.push(`✗ Content too short (${contentLength} chars)`)
+      }
       
-      const totalScore = fuzzyScore * 0.5 + validationScore * 0.5
+      // 6. Check that hex code appears early in the block (within first 10 lines)
+      const blockLines = blockContent.split('\n')
+      let hexLineIndex = -1
+      for (let k = 0; k < blockLines.length; k++) {
+        if (blockLines[k].includes(hex)) {
+          hexLineIndex = k
+          break
+        }
+      }
       
-      if (totalScore > 0.4) { // Slightly higher threshold
-        potentialBlocks.push({
+      if (hexLineIndex !== -1 && hexLineIndex < 5) {
+        validationScore += 0.2  // Very early appearance
+        validationReasons.push(`✓ Hex code appears very early (line ${hexLineIndex + 1})`)
+      } else if (hexLineIndex !== -1 && hexLineIndex < 10) {
+        validationScore += 0.1  // Early appearance
+        validationReasons.push(`✓ Hex code appears early (line ${hexLineIndex + 1})`)
+      } else if (hexLineIndex !== -1) {
+        validationReasons.push(`✗ Hex code appears late in block (line ${hexLineIndex + 1})`)
+        // Penalize if it appears very late (likely in a table)
+        if (hexLineIndex > 20) {
+          validationScore -= 0.1
+        }
+      }
+      
+      const totalScore = validationScore
+      
+      candidates.push({
+        block: {
           hexCode: constant.hexCode,
           constantName: constant.constantName,
           content: blockContent,
-          startLine,
-          endLine
-        })
+          startLine: headingLine,
+          endLine: endLine,
+          heading,
+          matchConfidence: totalScore
+        },
+        score: totalScore,
+        reasons: validationReasons,
+        isOverviewTable: isOverview
+      })
+    }
+  }
+  
+  // Sort candidates by score, but prioritize non-overview tables
+  candidates.sort((a, b) => {
+    // First, prioritize non-overview tables
+    if (!a.isOverviewTable && b.isOverviewTable) return -1
+    if (a.isOverviewTable && !b.isOverviewTable) return 1
+    // Then sort by score
+    return b.score - a.score
+  })
+  
+  // Return best match if it meets threshold
+  if (candidates.length > 0) {
+    const best = candidates[0]
+    if (best.score >= CONFIG.fuzzyThreshold) {
+      return { 
+        block: best.block,
+        debugInfo: {
+          allCandidates: candidates.map(c => ({
+            heading: c.block.heading,
+            score: c.score,
+            reasons: c.reasons
+          }))
+        }
+      }
+    }
+    // Return null but with debug info about why it didn't match
+    return {
+      block: null,
+      debugInfo: {
+        closestMatch: {
+          heading: best.block.heading || 'No heading',
+          content: best.block.content.substring(0, 200) + '...',
+          reasons: best.reasons,
+          score: best.score,
+          threshold: CONFIG.fuzzyThreshold
+        }
       }
     }
   }
   
-  // Return the best match
-  if (potentialBlocks.length > 0) {
-    // Sort by validation score and content relevance
-    potentialBlocks.sort((a, b) => {
-      // Prefer blocks that start with the exact heading
-      const aHasExactHeading = a.content.split('\n')[0].toLowerCase().includes(constant.constantName.toLowerCase().replace(/_/g, ''))
-      const bHasExactHeading = b.content.split('\n')[0].toLowerCase().includes(constant.constantName.toLowerCase().replace(/_/g, ''))
-      if (aHasExactHeading && !bHasExactHeading) return -1
-      if (!aHasExactHeading && bHasExactHeading) return 1
-      
-      // Otherwise prefer shorter, more focused blocks
-      return a.content.length - b.content.length
-    })
-    return potentialBlocks[0]
-  }
-  
-  return null
+  return { block: null, debugInfo: { message: 'No candidates found with hex code' } }
 }
 
-// Extract Sony documentation block for a specific constant
-async function extractSonyDocBlock(constant: ExtractedConstant): Promise<DocumentationBlock | null> {
-  const docContent = await fs.readFile(CONFIG.sonyDocsPath, 'utf-8')
-  const lines = docContent.split('\n')
+// Special handler for table extraction (datatypes and formats)
+async function extractFromTable(
+  constant: ExtractedConstant,
+  lines: string[]
+): Promise<{ block: DocumentationBlock | null; debugInfo?: any }> {
+  // Find the relevant table section
+  let tableStart = -1
+  let tableEnd = -1
   
+  const searchPatterns = constant.category === 'datatype' 
+    ? ['5.3 Simple types', 'Table 3', 'Datatype codes']
+    : ['Table 18', 'ObjectFormatCodes', '6.3 ObjectFormatCodes']
+  
+  for (let i = 0; i < lines.length; i++) {
+    if (searchPatterns.some(pattern => lines[i].includes(pattern))) {
+      tableStart = i
+      break
+    }
+  }
+  
+  if (tableStart === -1) {
+    return { 
+      block: null,
+      debugInfo: { message: `Table not found for ${constant.category}` }
+    }
+  }
+  
+  // Find end of table
+  for (let i = tableStart + 10; i < Math.min(lines.length, tableStart + 300); i++) {
+    if (lines[i].match(/^#{1,2}\s+\d+\.\d+/) || // Next section
+        lines[i].match(/Table \d+(?!\s*—)/) || // Next table
+        (constant.category === 'datatype' && lines[i].includes('5.4')) ||
+        (constant.category === 'format' && lines[i].includes('6.4'))) {
+      tableEnd = i
+      break
+    }
+  }
+  
+  if (tableEnd === -1) {
+    tableEnd = Math.min(tableStart + 200, lines.length)
+  }
+  
+  // Search for hex code in table
   const hexVariations = [
-    constant.hexCode,
     constant.hexCode.toLowerCase(),
     constant.hexCode.toUpperCase(),
+    '0x' + constant.hexCode.substring(2).padStart(4, '0').toLowerCase(),
+    '0x' + constant.hexCode.substring(2).padStart(4, '0').toUpperCase()
   ]
   
-  const potentialBlocks: DocumentationBlock[] = []
-  
   for (const hex of hexVariations) {
-    for (let i = 0; i < lines.length; i++) {
-      // Case-insensitive check for hex code
-      if (!lines[i].toLowerCase().includes(hex.toLowerCase())) continue
-      
-      // Skip compatibility table sections (they have lots of checkmarks)
-      if (lines[i].includes('✓')) continue
-      
-      // Check if this is in a PropertyCode field (preferred format)
-      // PropertyCode might be in a table where the hex is in a different cell
-      if (lines[i].includes('PropertyCode') && lines[i].toLowerCase().includes(hex.toLowerCase()) && lines[i].includes('|')) {
-        // Found a property definition, extract from the heading above
-        let startLine = i
-        let endLine = i
-        
-        // Search backward for the main heading (# Title without **)
-        // Need to search further back as there might be Summary/Description sections
-        for (let j = i - 1; j >= Math.max(0, i - 50); j--) {
-          if (lines[j].match(/^#\s+[^#*]/)) { // Single # heading without ** 
-            startLine = j
-            break
-          }
-        }
-        
-        // Search forward for next heading or major section
-        for (let j = i + 1; j < Math.min(lines.length, i + 200); j++) {
-          if (lines[j].match(/^#\s+[^#*]/) || // Next single # heading (not Summary/Description)
-              (lines[j].includes('PropertyCode') && !lines[j].includes(hex))) { // Next property
-            endLine = j
-            break
-          }
-        }
-        
-        const blockContent = lines.slice(startLine, endLine).join('\n')
-        potentialBlocks.push({
-          hexCode: constant.hexCode,
-          constantName: constant.constantName,
-          content: blockContent,
-          startLine,
-          endLine
-        })
-      }
-      // Check if this is in an Operation Code or Event Code field
-      else if ((lines[i].includes('Operation Code') || lines[i].includes('Event Code') || lines[i].includes('ControlCode')) && lines[i].toLowerCase().includes(hex.toLowerCase())) {
-        let startLine = i
-        let endLine = i
-        
-        // Search backward for the main heading (# Title without **)
-        for (let j = i - 1; j >= Math.max(0, i - 20); j--) {
-          if (lines[j].match(/^#\s+[^#*]/)) { // Single # heading without **
-            startLine = j
-            break
-          }
-        }
-        
-        // Search forward for next section
-        for (let j = i + 1; j < Math.min(lines.length, i + 200); j++) {
-          if (lines[j].match(/^#\s+[^#*]/)) { // Next single # heading (not Summary)
-            endLine = j
-            break
-          }
-        }
-        
-        const blockContent = lines.slice(startLine, endLine).join('\n')
-        potentialBlocks.push({
-          hexCode: constant.hexCode,
-          constantName: constant.constantName,
-          content: blockContent,
-          startLine,
-          endLine
-        })
-      }
-      // Check if this is in a summary table (| Name | Code | Description |)
-      else if (lines[i].includes('|') && lines[i].split('|').some(cell => cell.trim().toLowerCase() === hex.toLowerCase())) {
-        const tableCells = lines[i].split('|').map(c => c.trim())
-        const hexIndex = tableCells.findIndex(c => c.toLowerCase() === hex.toLowerCase())
-        const propertyName = hexIndex > 0 ? tableCells[hexIndex - 1] : ''
-        
-        // Skip if it's in the compatibility matrix
-        if (propertyName === '' || tableCells.some(c => c.includes('✓'))) continue
-        
-        // Look for the actual documentation section with this name
-        for (let j = 0; j < lines.length; j++) {
-          // Look for heading that matches the property name
-          if (lines[j].match(/^#\s+[^#]/) && 
-              fuzzyMatch(lines[j].replace(/^#\s+/, '').trim(), propertyName) > 0.7) {
-            
-            let startLine = j
-            let endLine = j + 1
-            
-            // Find end of this section
-            for (let k = j + 1; k < Math.min(lines.length, j + 200); k++) {
-              if (lines[k].match(/^#\s+[^#]/)) {
-                endLine = k
-                break
-              }
-              // Also check if we found the hex code in this section
-              if (lines[k].includes(hex)) {
-                // Extend to include more context
-                endLine = Math.min(k + 50, lines.length)
-                for (let l = k + 1; l < endLine; l++) {
-                  if (lines[l].match(/^#\s+[^#]/)) {
-                    endLine = l
-                    break
-                  }
-                }
-                break
-              }
-            }
-            
-            const blockContent = lines.slice(startLine, endLine).join('\n')
-            if (blockContent.includes(hex)) { // Make sure the hex code is in the content
-              potentialBlocks.push({
-                hexCode: constant.hexCode,
-                constantName: constant.constantName,
-                content: blockContent,
-                startLine,
-                endLine
-              })
-              break
-            }
-          }
-        }
-      } else {
-        // Original logic for non-table entries
-        // Find the section boundaries
-        let startLine = i
-        let endLine = i
-        
-        // Search backward for section header (# heading)
-        for (let j = i - 1; j >= Math.max(0, i - 30); j--) {
-          if (lines[j].match(/^#\s+/)) {
-            startLine = j
-            break
-          }
-        }
-        
-        // Search forward for next section
-        for (let j = i + 1; j < Math.min(lines.length, i + 100); j++) {
-          if (lines[j].match(/^#\s+/) && j > startLine) {
-            endLine = j
-            break
-          }
-        }
-        
-        // Extract heading
-        const headingMatch = lines[startLine].match(/^#\s+(.+)/)
-        const heading = headingMatch ? headingMatch[1].trim() : ''
-        
-        // Calculate fuzzy match score
-        const fuzzyScore = fuzzyMatch(constant.constantName, heading)
-        
-        // Validate the block
-        const blockContent = lines.slice(startLine, endLine).join('\n')
-        let validationScore = 0
-        
-        if (blockContent.includes('PropertyCode')) validationScore += 0.3
-        if (blockContent.includes('Operation Code')) validationScore += 0.3
-        if (blockContent.includes('Event Code')) validationScore += 0.3
-        if (blockContent.includes('ControlCode')) validationScore += 0.3
-        if (blockContent.includes('Summary')) validationScore += 0.2
-        if (blockContent.includes('Description')) validationScore += 0.2
-        
-        const totalScore = fuzzyScore * 0.6 + validationScore * 0.4
-        
-        if (totalScore > 0.3) { // Minimum threshold
-          potentialBlocks.push({
+    for (let i = tableStart; i < tableEnd; i++) {
+      if (lines[i].includes(hex)) {
+        // Extract table row and context
+        const blockStart = Math.max(tableStart, i - 5)
+        const blockEnd = Math.min(tableEnd, i + 3)
+        return {
+          block: {
             hexCode: constant.hexCode,
             constantName: constant.constantName,
-            content: blockContent,
-            startLine,
-            endLine
-          })
+            content: lines.slice(blockStart, blockEnd).join('\n'),
+            startLine: blockStart,
+            endLine: blockEnd,
+            heading: `Table entry for ${constant.constantName}`,
+            matchConfidence: 1.0
+          }
         }
       }
     }
   }
   
-  // Return the best match
-  if (potentialBlocks.length > 0) {
-    // Sort by content quality - prefer blocks with tables and descriptions
-    potentialBlocks.sort((a, b) => {
-      const aHasTable = a.content.includes('PropertyCode') || a.content.includes('Field')
-      const bHasTable = b.content.includes('PropertyCode') || b.content.includes('Field')
-      if (aHasTable && !bHasTable) return -1
-      if (!aHasTable && bHasTable) return 1
-      return b.content.length - a.content.length
-    })
-    return potentialBlocks[0]
+  return {
+    block: null,
+    debugInfo: {
+      message: `Hex code ${constant.hexCode} not found in table`,
+      searchedRange: `Lines ${tableStart} to ${tableEnd}`
+    }
   }
-  
-  return null
 }
 
 // Save documentation block to markdown file
@@ -624,6 +639,8 @@ async function saveDocumentationBlock(constant: ExtractedConstant, block: Docume
 **Category**: ${constant.category}
 **Vendor**: ${vendor}
 **Source File**: ${constant.sourceFile}
+**Match Confidence**: ${(block.matchConfidence * 100).toFixed(1)}%
+${block.heading ? `**Documentation Heading**: ${block.heading}` : ''}
 
 ---
 
@@ -634,99 +651,62 @@ ${block.content}
 }
 
 // Check if a constant exists in documentation and extract if found
-async function checkAndExtractDocumentation(constant: ExtractedConstant): Promise<{ found: boolean; searchAttempts: string[]; extracted: boolean }> {
-  // Special handling for ISO data types and formats - check if they exist at all first
-  if ((constant.category === 'datatype' || constant.category === 'format') && constant.vendor === 'iso') {
-    // First check if the hex code exists anywhere in the doc
-    const docPath = CONFIG.isoDocsPath
-    const docContent = await fs.readFile(docPath, 'utf-8')
-    const docContentLower = docContent.toLowerCase()
-    
-    const hexVariations = [
-      constant.hexCode.toLowerCase(),
-      constant.hexCode.toUpperCase(),
-      '0x' + constant.hexCode.substring(2).padStart(4, '0').toLowerCase(),
-      '0x' + constant.hexCode.substring(2).padStart(4, '0').toUpperCase()
-    ]
-    
-    let found = false
-    for (const hex of hexVariations) {
-      if (docContentLower.includes(hex.toLowerCase())) {
-        found = true
-        break
-      }
-    }
-    
-    if (found) {
-      // Try to extract the block
-      const block = await extractISODocBlock(constant)
-      if (block) {
-        await saveDocumentationBlock(constant, block)
-        return { 
-          found: true, 
-          searchAttempts: constant.category === 'datatype' ? ['Found in Table 3 — Datatype codes'] : ['Found in Table 18 — ObjectFormatCodes'],
-          extracted: true
-        }
-      }
-      return { 
-        found: true, 
-        searchAttempts: constant.category === 'datatype' ? ['Found in Table 3 but could not extract'] : ['Found in Table 18 but could not extract'],
-        extracted: false
-      }
-    }
-    
-    return { 
-      found: false, 
-      searchAttempts: constant.category === 'datatype' ? ['Not found in Table 3'] : ['Not found in Table 18'],
-      extracted: false
-    }
-  }
+async function checkAndExtractDocumentation(
+  constant: ExtractedConstant
+): Promise<{ 
+  found: boolean; 
+  extracted: boolean; 
+  searchAttempts: string[];
+  closestMatch?: MissingConstant['closestMatch']
+}> {
+  const docPath = constant.vendor === 'iso' ? CONFIG.isoDocsPath : CONFIG.sonyDocsPath
   
-  // Extract documentation block based on vendor
-  const block = constant.vendor === 'iso' 
-    ? await extractISODocBlock(constant)
-    : await extractSonyDocBlock(constant)
+  // Use strict extraction
+  const { block, debugInfo } = await extractDocBlockStrict(constant, docPath)
   
   if (block) {
     await saveDocumentationBlock(constant, block)
     return {
       found: true,
-      searchAttempts: [`Found and extracted documentation block`],
-      extracted: true
+      extracted: true,
+      searchAttempts: [`Found with confidence ${(block.matchConfidence * 100).toFixed(1)}%`]
     }
   }
   
-  // If not found, check if hex code exists anywhere in the doc
-  const docPath = constant.vendor === 'iso' ? CONFIG.isoDocsPath : CONFIG.sonyDocsPath
+  // Check if hex exists at all
   const docContent = await fs.readFile(docPath, 'utf-8')
-  const docContentLower = docContent.toLowerCase()
+  const hexExists = docContent.toLowerCase().includes(constant.hexCode.toLowerCase())
   
-  const searchAttempts = [
-    constant.hexCode,
-    constant.hexCode.toLowerCase(),
-    constant.hexCode.toUpperCase(),
-  ]
-  
-  for (const searchTerm of searchAttempts) {
-    if (docContentLower.includes(searchTerm.toLowerCase())) {
-      return { 
-        found: true, 
-        searchAttempts: [...searchAttempts, 'Found hex but could not extract clean block'],
-        extracted: false
-      }
+  if (hexExists) {
+    // Hex exists but couldn't extract properly
+    const closestMatch = debugInfo?.closestMatch
+    return {
+      found: true,
+      extracted: false,
+      searchAttempts: ['Hex found but extraction failed'],
+      closestMatch: closestMatch ? {
+        heading: closestMatch.heading,
+        content: closestMatch.content,
+        reasons: closestMatch.reasons
+      } : undefined
     }
   }
   
-  return { 
-    found: false, 
-    searchAttempts,
-    extracted: false
+  return {
+    found: false,
+    extracted: false,
+    searchAttempts: ['Hex code not found in documentation'],
+    closestMatch: debugInfo?.closestMatch ? {
+      heading: debugInfo.closestMatch.heading,
+      content: debugInfo.closestMatch.content,
+      reasons: debugInfo.closestMatch.reasons
+    } : undefined
   }
 }
 
 // Analyze missing constants by category
 async function analyzeMissingConstants(): Promise<Map<string, CategorySummary>> {
-  console.log('🔍 PTP Constants Documentation Audit - With Individual Extraction')
+  console.log('🔍 PTP Constants Documentation Audit - Strict Mode')
   console.log('================================================================\n')
   
   // Clean output directory
@@ -751,7 +731,7 @@ async function analyzeMissingConstants(): Promise<Map<string, CategorySummary>> 
   })
   
   // Analyze each group
-  console.log('🔎 Checking documentation and extracting blocks...')
+  console.log('🔎 Checking documentation with strict criteria...')
   const summaries = new Map<string, CategorySummary>()
   
   // Sort keys for consistent output
@@ -795,7 +775,15 @@ async function analyzeMissingConstants(): Promise<Map<string, CategorySummary>> 
           totalExtracted++
           process.stdout.write('✅ (extracted)\n')
         } else {
-          process.stdout.write('✅ (found but not extracted)\n')
+          process.stdout.write('⚠️ (found but not extracted)\n')
+          if (result.closestMatch) {
+            // Output debug info immediately
+            console.log(`\n     ⚠️ DEBUG: Found but couldn't extract ${constant.hexCode} - ${constant.constantName}`)
+            console.log(`     Closest match heading: ${result.closestMatch.heading}`)
+            console.log(`     Reasons it didn't match:`)
+            result.closestMatch.reasons.forEach(r => console.log(`       ${r}`))
+            console.log()
+          }
         }
       } else {
         missingConstants.push({
@@ -803,16 +791,26 @@ async function analyzeMissingConstants(): Promise<Map<string, CategorySummary>> 
           constantName: constant.constantName,
           category: constant.category,
           sourceFile: constant.sourceFile,
-          searchAttempts: result.searchAttempts
+          searchAttempts: result.searchAttempts,
+          closestMatch: result.closestMatch
         })
         process.stdout.write('❌\n')
+        
+        if (result.closestMatch) {
+          // Output debug info immediately for missing constants
+          console.log(`\n     ❌ DEBUG: Could not find ${constant.hexCode} - ${constant.constantName}`)
+          console.log(`     Closest potential match:`)
+          console.log(`       Heading: ${result.closestMatch.heading}`)
+          console.log(`       Reasons it didn't match:`)
+          result.closestMatch.reasons.forEach(r => console.log(`         ${r}`))
+          console.log()
+        }
       }
     }
     
     const total = groupConstants.length
     const missing = total - found
     const percentage = total > 0 ? (found / total) * 100 : 0
-    
     const extractionPercentage = found > 0 ? (extracted / found) * 100 : 0
     
     summaries.set(key, {
@@ -837,11 +835,19 @@ async function analyzeMissingConstants(): Promise<Map<string, CategorySummary>> 
 
 // Generate comprehensive report
 async function generateReport(summaries: Map<string, CategorySummary>): Promise<void> {
-  let report = `# PTP Constants Documentation Coverage Report
+  let report = `# PTP Constants Documentation Coverage Report (Strict Mode)
 Generated: ${new Date().toISOString()}
 
-This report provides a comprehensive analysis of PTP constants documentation coverage.
+This report provides a comprehensive analysis of PTP constants documentation coverage using strict matching criteria.
 Individual documentation blocks have been extracted to \`docs/audit/iso/\` and \`docs/audit/sony/\`.
+
+## Strict Matching Criteria
+
+- Heading must match constant name (fuzzy match >= 60%)
+- Block must contain correct field type for category
+- Hex code must appear within the block
+- Block must have proper boundaries (headings before and after)
+- Minimum content length requirement
 
 ## Summary
 
@@ -912,21 +918,26 @@ Individual documentation blocks have been extracted to \`docs/audit/iso/\` and \
   // Overall Summary
   const overallTotal = isoTotal + sonyTotal
   const overallFound = isoFound + sonyFound
+  const overallExtracted = isoExtracted + sonyExtracted
   const overallMissing = isoMissing + sonyMissing
   const overallPercentage = overallTotal > 0 ? (overallFound / overallTotal) * 100 : 0
+  const overallExtractionPercentage = overallFound > 0 ? (overallExtracted / overallFound) * 100 : 0
   
   report += `### Overall Statistics\n\n`
   report += `- **Total PTP Constants**: ${overallTotal}\n`
   report += `- **Documented**: ${overallFound}\n`
+  report += `- **Extracted**: ${overallExtracted}\n`
   report += `- **Missing**: ${overallMissing}\n`
   report += `- **Coverage**: ${overallPercentage.toFixed(1)}%\n`
-  report += `- **Target**: 80%\n`
+  report += `- **Extraction Rate**: ${overallExtractionPercentage.toFixed(1)}%\n`
+  report += `- **Target**: 80% coverage\n`
   report += `- **Status**: ${overallPercentage >= 80 ? '✅ PASSING' : '❌ NEEDS IMPROVEMENT'}\n\n`
   
   // Detailed missing constants
   if (overallMissing > 0) {
     report += `## Missing Constants Details\n\n`
-    report += `The following PTP constants are defined in the codebase but could not be found in the documentation.\n\n`
+    report += `The following PTP constants are defined in the codebase but could not be found in the documentation.\n`
+    report += `Debug information about why extraction failed is shown in the console output above.\n\n`
     
     // ISO Missing
     if (isoMissing > 0) {
@@ -966,52 +977,63 @@ Individual documentation blocks have been extracted to \`docs/audit/iso/\` and \
   
   // Write report
   await fs.mkdir(CONFIG.outputPath, { recursive: true })
-  const reportPath = path.join(CONFIG.outputPath, 'ptp-constants-coverage.md')
+  const reportPath = path.join(CONFIG.outputPath, 'ptp-constants-coverage-strict.md')
   await fs.writeFile(reportPath, report)
   console.log(`\n📄 Report saved to: ${reportPath}`)
   
   // Also save as JSON for programmatic access
   const jsonData = {
     generated: new Date().toISOString(),
+    mode: 'strict',
     excludedFiles: CONFIG.excludeFiles,
     summary: {
       total: overallTotal,
       documented: overallFound,
+      extracted: overallExtracted,
       missing: overallMissing,
       coverage: overallPercentage,
+      extractionRate: overallExtractionPercentage,
       passing: overallPercentage >= 80
     },
     iso: {
       total: isoTotal,
       documented: isoFound,
+      extracted: isoExtracted,
       missing: isoMissing,
       coverage: isoPercentage,
+      extractionRate: isoExtractionPercentage,
       categories: sortedIsoSummaries.map(s => ({
         category: s.category,
         total: s.total,
         documented: s.found,
+        extracted: s.extracted,
         missing: s.missing,
         coverage: s.percentage,
+        extractionRate: s.extractionPercentage,
         missingConstants: s.missingConstants
       }))
     },
     sony: {
       total: sonyTotal,
       documented: sonyFound,
+      extracted: sonyExtracted,
       missing: sonyMissing,
       coverage: sonyPercentage,
+      extractionRate: sonyExtractionPercentage,
       categories: sortedSonySummaries.map(s => ({
         category: s.category,
         total: s.total,
         documented: s.found,
+        extracted: s.extracted,
         missing: s.missing,
         coverage: s.percentage,
+        extractionRate: s.extractionPercentage,
         missingConstants: s.missingConstants
       }))
     }
   }
   
-  const jsonPath = path.join(CONFIG.outputPath, 'ptp-constants-coverage.json')
+  const jsonPath = path.join(CONFIG.outputPath, 'ptp-constants-coverage-strict.json')
   await fs.writeFile(jsonPath, JSON.stringify(jsonData, null, 2))
   console.log(`📊 JSON data saved to: ${jsonPath}`)
 }
@@ -1028,13 +1050,18 @@ async function main() {
     
     let totalConstants = 0
     let totalFound = 0
+    let totalExtracted = 0
     summaries.forEach(s => {
       totalConstants += s.total
       totalFound += s.found
+      totalExtracted += s.extracted
     })
     
     const coverage = totalConstants > 0 ? (totalFound / totalConstants) * 100 : 0
+    const extractionRate = totalFound > 0 ? (totalExtracted / totalFound) * 100 : 0
+    
     console.log(`\n📈 Final Coverage: ${coverage.toFixed(1)}%`)
+    console.log(`📊 Extraction Rate: ${extractionRate.toFixed(1)}%`)
     console.log(`📊 Status: ${coverage >= 80 ? '✅ PASSING' : '❌ NEEDS IMPROVEMENT'}`)
     
     if (coverage >= 80) {
@@ -1042,7 +1069,8 @@ async function main() {
       console.log('📁 Documentation blocks have been extracted to docs/audit/')
     } else {
       console.log('\n⚠️  Coverage is below 80% threshold.')
-      console.log('Review the detailed report for missing constants.')
+      console.log('📝 Review the debug output above for detailed failure reasons.')
+      console.log('💡 Consider adjusting fuzzy threshold or improving documentation format.')
     }
     
   } catch (error) {

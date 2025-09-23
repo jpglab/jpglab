@@ -59,7 +59,6 @@ export class GenericPTPCamera extends EventEmitter implements CameraInterface {
     const response = await this.protocol.sendOperation({
       code: PTPOperations.INITIATE_CAPTURE.code,
       parameters: [0, 0], // storageId: 0, objectFormat: 0
-      hasDataPhase: false,
     })
 
     if (response.code !== PTPResponses.OK.code) {
@@ -111,8 +110,8 @@ export class GenericPTPCamera extends EventEmitter implements CameraInterface {
     const response = await this.protocol.sendOperation({
       code: PTPOperations.SET_DEVICE_PROP_VALUE.code,
       parameters: [property.code],
-      hasDataPhase: true,
       data,
+      expectsData: true,
     })
 
     if (response.code !== PTPResponses.OK.code) {

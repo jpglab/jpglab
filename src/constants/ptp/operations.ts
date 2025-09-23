@@ -12,7 +12,7 @@ export const PTPOperations = {
   GET_DEVICE_INFO: {
     code: 0x1001,
     description: 'Get device information including manufacturer, model, and supported operations',
-    dataIn: true,
+    expectsData: true,
     dataDescription: 'DeviceInfo dataset'
   },
   OPEN_SESSION: {
@@ -35,7 +35,7 @@ export const PTPOperations = {
   GET_STORAGE_IDS: {
     code: 0x1004,
     description: 'Get list of storage IDs',
-    dataIn: true,
+    expectsData: true,
     dataDescription: 'Array of storage IDs'
   },
   GET_STORAGE_INFO: {
@@ -48,7 +48,7 @@ export const PTPOperations = {
         description: 'Storage identifier to query'
       }
     ],
-    dataIn: true,
+    expectsData: true,
     dataDescription: 'StorageInfo dataset'
   },
   GET_NUM_OBJECTS: {
@@ -92,7 +92,7 @@ export const PTPOperations = {
         description: 'Parent folder handle'
       }
     ],
-    dataIn: true,
+    expectsData: true,
     dataDescription: 'Array of object handles'
   },
   
@@ -107,7 +107,7 @@ export const PTPOperations = {
         description: 'Object handle'
       }
     ],
-    dataIn: true,
+    expectsData: true,
     dataDescription: 'ObjectInfo dataset'
   },
   GET_OBJECT: {
@@ -120,7 +120,7 @@ export const PTPOperations = {
         description: 'Handle of the object to retrieve'
       }
     ],
-    dataIn: true,
+    expectsData: true,
     dataDescription: 'Object data in format specified by ObjectInfo'
   },
   GET_THUMB: {
@@ -133,7 +133,7 @@ export const PTPOperations = {
         description: 'Object handle'
       }
     ],
-    dataIn: true,
+    expectsData: true,
     dataDescription: 'Thumbnail image data'
   },
   DELETE_OBJECT: {
@@ -167,13 +167,13 @@ export const PTPOperations = {
         description: 'Parent folder'
       }
     ],
-    dataOut: true,
+    respondsWithData: true,
     dataDescription: 'ObjectInfo to send'
   },
   SEND_OBJECT: {
     code: 0x100D,
     description: 'Send object data',
-    dataOut: true,
+    respondsWithData: true,
     dataDescription: 'Object data to send'
   },
   
@@ -192,7 +192,7 @@ export const PTPOperations = {
         type: DataType.UINT16,
         description: 'Capture format'
       }
-    ]
+    ],
   },
   FORMAT_STORE: {
     code: 0x100F,
@@ -257,7 +257,7 @@ export const PTPOperations = {
         description: 'Property code to query'
       }
     ],
-    dataIn: true,
+    expectsData: true,
     dataDescription: 'Property descriptor data'
   },
   GET_DEVICE_PROP_VALUE: {
@@ -270,7 +270,7 @@ export const PTPOperations = {
         description: 'Property code to get'
       }
     ],
-    dataIn: true,
+    expectsData: true,
     dataDescription: 'Current property value'
   },
   SET_DEVICE_PROP_VALUE: {
@@ -283,7 +283,7 @@ export const PTPOperations = {
         description: 'Property code to set'
       }
     ],
-    dataOut: true,
+    respondsWithData: true,
     dataDescription: 'New property value'
   },
   RESET_DEVICE_PROP_VALUE: {
@@ -372,7 +372,7 @@ export const PTPOperations = {
         description: 'Maximum bytes to return'
       }
     ],
-    dataIn: true,
+    expectsData: true,
     dataDescription: 'Partial object data'
   },
   INITIATE_OPEN_CAPTURE: {

@@ -2,111 +2,431 @@
  * Sony property definitions - extending and overriding PTP
  */
 
-import { DataType, HexCode, PropertyDefinition } from '@constants/types'
+import { DataType, PropertyDefinition } from '@constants/types'
 import { PTPProperties } from '@constants/ptp/properties'
-import { VendorIDs } from '@constants/vendors/vendor-ids'
-import { encodePTPValue } from '@core/buffers'
+import { encodePTPValue, decodePTPValue } from '@core/buffers'
 
-/**
- * Sony Device Constants
- */
-export const SonyConstants = {
-    VENDOR_ID: VendorIDs.SONY,
-    DEVICE_PROPERTY_OPTION: 0x01,
-    // from the Sony Reference document, kind of buried
-    // The Initiator Version and SDIExtensionVersion are 0x012C (3.00) in this version.
-    // “3” indicates the major version, and “00” indicates the minor version
-    PROTOCOL_VERSION: 0x012c,
-    SDIO_FRAME_BUFFER_SIZE: 1024 * 1024, // 1MB frame buffer for SDIO parsing
-    SDIO_HEADER_SIZE: 8, // SDIO packet header size
-} as const
-
-/**
- * Sony property definitions - extending and overriding PTP
- * Vendor extensions don't need validation as they define their own shape
- */
 export const SonyProperties = {
-    ...PTPProperties, // Start with PTP standard
+    ...PTPProperties,
 
-    // Override PTP properties with Sony-specific implementations
     APERTURE: {
         name: 'APERTURE',
         code: 0x5007,
         type: DataType.UINT16,
-        unit: 'f-stop',
-        description: 'Aperture f-number (Sony encoding)',
+        unit: 'F-Stop',
+        enum: {
+            '1': 0x0064,
+            '1.1': 0x006e,
+            '1.2': 0x0078,
+            '1.3': 0x0082,
+            '1.4': 0x008c,
+            '1.6': 0x00a0,
+            '1.7': 0x00aa,
+            '1.8': 0x00b4,
+            '2': 0x00c8,
+            '2.2': 0x00dc,
+            '2.4': 0x00f0,
+            '2.5': 0x00fa,
+            '2.8': 0x0118,
+            '3.1': 0x0136,
+            '3.2': 0x0140,
+            '3.4': 0x0154,
+            '3.5': 0x015e,
+            '3.7': 0x0172,
+            '4': 0x0190,
+            '4.4': 0x01b8,
+            '4.5': 0x01c2,
+            '4.8': 0x01e0,
+            '5': 0x01f4,
+            '5.2': 0x0208,
+            '5.6': 0x0230,
+            '6.2': 0x026c,
+            '6.3': 0x0276,
+            '6.7': 0x029e,
+            '6.8': 0x02a8,
+            '7.1': 0x02c6,
+            '7.3': 0x02da,
+            '8': 0x0320,
+            '8.7': 0x0366,
+            '9': 0x0384,
+            '9.5': 0x03b6,
+            '9.6': 0x03c0,
+            '10': 0x03e8,
+            '11': 0x044c,
+            '13': 0x0514,
+            '14': 0x0578,
+            '16': 0x0640,
+            '18': 0x0708,
+            '19': 0x076c,
+            '20': 0x07d0,
+            '22': 0x0898,
+            '25': 0x09c4,
+            '27': 0x0a8c,
+            '29': 0x0b54,
+            '32': 0x0c80,
+            '36': 0x0e10,
+            '38': 0x0ed8,
+            '40': 0x0fa0,
+            '45': 0x1194,
+            '51': 0x13ec,
+            '54': 0x1518,
+            '57': 0x1644,
+            '64': 0x1900,
+            '72': 0x1c20,
+            '76': 0x1db0,
+            '81': 0x1fa4,
+            '90': 0x2328,
+            'Iris Close': 0xfffd,
+            '--': 0xfffe,
+            'nothing to display': 0xffff,
+        },
+        description: 'Get/Set the aperture value.',
         writable: true,
-        encode: (value: string | number) => {
-            const num = typeof value === 'string' ? parseFloat(value.replace('f/', '')) : value
-            return encodePTPValue(Math.round(num * 100), DataType.UINT16)
+    },
+
+    SHUTTER_SPEED: {
+        name: 'SHUTTER_SPEED',
+        code: 0xd20d,
+        type: DataType.UINT32,
+
+        // BULB = 0x00000000
+        // nothing to display = 0xFFFFFFFF
+        // Upper two bytes: numerator, Lower two bytes: denominator
+        // In the case of the shutter speed is displayed as "Real Number" on the camera, the denominator is fixed 0x000A. (e.g. 0x000F000A: 0x000F (means 15) / 0x0000A (means 10) = 1.5")
+        // In the case of the shutter speed is displayed as "Fraction Number" on the camera, the numerator is fixed 0x0001. (e.g. 0x000103E8: 0x0001 (means 1) / 0x03E8 (means 1000) = 1/1000)
+        // Note: min: 0x00000000, max: 0xFFFFFFFF, step: 0x00000001
+
+        encode: (value: string) => {
+            if (value === 'BULB') return 0x00000000
+            if (value === 'nothing to display') return 0xffffffff
+            if (value.includes('/')) {
+                const [numerator, denominator] = value.split('/')
+                return encodePTPValue(
+                    (Math.round(parseInt(numerator || '1') * 10) << 16) | parseInt(denominator || '1'),
+                    DataType.UINT16
+                )
+            }
+            const seconds = parseFloat(value.replace('"', ''))
+            return encodePTPValue(Math.round(seconds * 10) << 16, DataType.UINT16)
         },
-        decode: (value: HexCode | Uint8Array) => {
-            const num = typeof value === 'number' ? value : 0
-            return `f/${(num / 100).toFixed(1)}`
+        decode: (value: Uint8Array) => {
+            // convert to hex code
+            const hexValue = decodePTPValue(value, DataType.UINT16)
+            if (hexValue === 0x00000000) return 'BULB'
+            if (hexValue === 0xffffffff) return 'nothing to display'
+            if (hexValue.toString(16).startsWith('0x0001')) {
+                const denominator = parseInt(hexValue.toString(16).substring(6))
+                return `1/${denominator}`
+            }
+            const seconds = parseInt(hexValue.toString(16).substring(6))
+            return `${seconds}"`
         },
+        description: 'Get/Set the shutter speed.',
+        writable: true,
     },
 
     ISO: {
         name: 'ISO',
         code: 0xd21e,
-        type: DataType.UINT32, // Sony uses UINT32 instead of UINT16
+        type: DataType.UINT32,
         unit: 'ISO',
-        description: 'ISO sensitivity with Sony-specific auto modes',
+        description: 'Get/Set the ISO sensitivity.',
         writable: true,
-        encode: (value: string | number) => {
-            let numValue: number
-            if (typeof value === 'string') {
-                if (value === 'AUTO' || value === 'ISO AUTO') numValue = 0x00ffffff
-                else if (value === 'MULTI_NR_AUTO') numValue = 0x01ffffff
-                else if (value === 'MULTI_NR_HIGH_AUTO') numValue = 0x02ffffff
-                else {
-                    const match = value.match(/\d+/)
-                    numValue = match ? parseInt(match[0]) : 0
-                }
-            } else {
-                numValue = value
-            }
-            return encodePTPValue(numValue, DataType.UINT32)
-        },
-        decode: (value: HexCode | Uint8Array) => {
-            const num = typeof value === 'number' ? value : 0
-            // Special AUTO values
-            if (num === 0x00ffffff) return 'ISO AUTO'
-            if (num === 0x01ffffff) return 'Multi Frame NR ISO AUTO'
-            if (num === 0x02ffffff) return 'Multi Frame NR High ISO AUTO'
-
-            // Check for Multi Frame NR modes (prefix byte)
-            const prefix = (num >> 24) & 0xff
-            let mode = ''
-            if (prefix === 0x01) {
-                mode = 'Multi Frame NR '
-            } else if (prefix === 0x02) {
-                mode = 'Multi Frame NR High '
-            }
-
-            // Extract the actual ISO value (lower 24 bits)
-            const isoValue = num & 0xffffff
-
-            // Sony uses direct decimal values for ISO
-            if (isoValue >= 10 && isoValue <= 1000000) {
-                return `${mode}ISO ${isoValue}`
-            }
-
-            return 'ISO Unknown'
+        enum: {
+            'ISO 10': 0x0000000a,
+            'ISO 12': 0x0000000c,
+            'ISO 16': 0x00000010,
+            'ISO 20': 0x00000014,
+            'ISO 25': 0x00000019,
+            'ISO 32': 0x00000020,
+            'ISO 40': 0x00000028,
+            'ISO 50': 0x00000032,
+            'ISO 64': 0x00000040,
+            'ISO 80': 0x00000050,
+            'ISO 100': 0x00000064,
+            'ISO 125': 0x0000007d,
+            'ISO 160': 0x000000a0,
+            'ISO 200': 0x000000c8,
+            'ISO 250': 0x000000fa,
+            'ISO 320': 0x00000140,
+            'ISO 400': 0x00000190,
+            'ISO 500': 0x000001f4,
+            'ISO 640': 0x00000280,
+            'ISO 800': 0x00000320,
+            'ISO 1000': 0x000003e8,
+            'ISO 1250': 0x000004e2,
+            'ISO 1600': 0x00000640,
+            'ISO 2000': 0x000007d0,
+            'ISO 2500': 0x000009c4,
+            'ISO 3200': 0x00000c80,
+            'ISO 4000': 0x00000fa0,
+            'ISO 5000': 0x00001388,
+            'ISO 6400': 0x00001900,
+            'ISO 8000': 0x00001f40,
+            'ISO 10000': 0x00002710,
+            'ISO 12800': 0x00003200,
+            'ISO 16000': 0x00003e80,
+            'ISO 20000': 0x00004e20,
+            'ISO 25600': 0x00006400,
+            'ISO 32000': 0x00007d00,
+            'ISO 40000': 0x00009c40,
+            'ISO 51200': 0x0000c800,
+            'ISO 64000': 0x0000fa00,
+            'ISO 80000': 0x00013880,
+            'ISO 102400': 0x00019000,
+            'ISO 128000': 0x0001f400,
+            'ISO 160000': 0x00027100,
+            'ISO 204800': 0x00032000,
+            'ISO 256000': 0x0003e800,
+            'ISO 320000': 0x0004e200,
+            'ISO 409600': 0x00064000,
+            'ISO 512000': 0x0007d000,
+            'ISO 640000': 0x0009c400,
+            'ISO 819200': 0x000c8000,
+            'Multi Frame NR ISO 10': 0x0100000a,
+            'Multi Frame NR ISO 12': 0x0100000c,
+            'Multi Frame NR ISO 16': 0x01000010,
+            'Multi Frame NR ISO 20': 0x01000014,
+            'Multi Frame NR ISO 25': 0x01000019,
+            'Multi Frame NR ISO 32': 0x01000020,
+            'Multi Frame NR ISO 40': 0x01000028,
+            'Multi Frame NR ISO 50': 0x01000032,
+            'Multi Frame NR ISO 64': 0x01000040,
+            'Multi Frame NR ISO 80': 0x01000050,
+            'Multi Frame NR ISO 100': 0x01000064,
+            'Multi Frame NR ISO 125': 0x0100007d,
+            'Multi Frame NR ISO 160': 0x010000a0,
+            'Multi Frame NR ISO 200': 0x010000c8,
+            'Multi Frame NR ISO 250': 0x010000fa,
+            'Multi Frame NR ISO 320': 0x01000140,
+            'Multi Frame NR ISO 400': 0x01000190,
+            'Multi Frame NR ISO 500': 0x010001f4,
+            'Multi Frame NR ISO 640': 0x01000280,
+            'Multi Frame NR ISO 800': 0x01000320,
+            'Multi Frame NR ISO 1000': 0x010003e8,
+            'Multi Frame NR ISO 1250': 0x010004e2,
+            'Multi Frame NR ISO 1600': 0x01000640,
+            'Multi Frame NR ISO 2000': 0x010007d0,
+            'Multi Frame NR ISO 2500': 0x010009c4,
+            'Multi Frame NR ISO 3200': 0x01000c80,
+            'Multi Frame NR ISO 4000': 0x01000fa0,
+            'Multi Frame NR ISO 5000': 0x01001388,
+            'Multi Frame NR ISO 6400': 0x01001900,
+            'Multi Frame NR ISO 8000': 0x01001f40,
+            'Multi Frame NR ISO 10000': 0x01002710,
+            'Multi Frame NR ISO 12800': 0x01003200,
+            'Multi Frame NR ISO 16000': 0x01003e80,
+            'Multi Frame NR ISO 25600': 0x01006400,
+            'Multi Frame NR ISO 51200': 0x0100c800,
+            'Multi Frame NR ISO 102400': 0x01019000,
+            'Multi Frame NR ISO 204800': 0x01032000,
+            'Multi Frame NR ISO 409600': 0x01064000,
+            'Multi Frame NR ISO 819200': 0x010c8000,
+            'Multi Frame NR ISO AUTO': 0x01ffffff,
+            'Multi Frame NR High ISO 10': 0x0200000a,
+            'Multi Frame NR High ISO 12': 0x0200000c,
+            'Multi Frame NR High ISO 16': 0x02000010,
+            'Multi Frame NR High ISO 20': 0x02000014,
+            'Multi Frame NR High ISO 25': 0x02000019,
+            'Multi Frame NR High ISO 32': 0x02000020,
+            'Multi Frame NR High ISO 40': 0x02000028,
+            'Multi Frame NR High ISO 50': 0x02000032,
+            'Multi Frame NR High ISO 64': 0x02000040,
+            'Multi Frame NR High ISO 80': 0x02000050,
+            'Multi Frame NR High ISO 100': 0x02000064,
+            'Multi Frame NR High ISO 125': 0x0200007d,
+            'Multi Frame NR High ISO 160': 0x020000a0,
+            'Multi Frame NR High ISO 200': 0x020000c8,
+            'Multi Frame NR High ISO 250': 0x020000fa,
+            'Multi Frame NR High ISO 320': 0x02000140,
+            'Multi Frame NR High ISO 400': 0x02000190,
+            'Multi Frame NR High ISO 500': 0x020001f4,
+            'Multi Frame NR High ISO 640': 0x02000280,
+            'Multi Frame NR High ISO 800': 0x02000320,
+            'Multi Frame NR High ISO 1000': 0x020003e8,
+            'Multi Frame NR High ISO 1250': 0x020004e2,
+            'Multi Frame NR High ISO 1600': 0x02000640,
+            'Multi Frame NR High ISO 2000': 0x020007d0,
+            'Multi Frame NR High ISO 2500': 0x020009c4,
+            'Multi Frame NR High ISO 3200': 0x02000c80,
+            'Multi Frame NR High ISO 4000': 0x02000fa0,
+            'Multi Frame NR High ISO 5000': 0x02001388,
+            'Multi Frame NR High ISO 6400': 0x02001900,
+            'Multi Frame NR High ISO 8000': 0x02001f40,
+            'Multi Frame NR High ISO 10000': 0x02002710,
+            'Multi Frame NR High ISO 12800': 0x02003200,
+            'Multi Frame NR High ISO 16000': 0x02003e80,
+            'Multi Frame NR High ISO 25600': 0x02006400,
+            'Multi Frame NR High ISO 51200': 0x0200c800,
+            'Multi Frame NR High ISO 102400': 0x02019000,
+            'Multi Frame NR High ISO 204800': 0x02032000,
+            'Multi Frame NR High ISO 409600': 0x02064000,
+            'Multi Frame NR High ISO 819200': 0x020c8000,
+            'Multi Frame NR High ISO AUTO': 0x02ffffff,
+            'ISO AUTO': 0x00ffffff,
         },
     },
 
-    // Sony-specific device properties
     STILL_CAPTURE_MODE: {
         name: 'STILL_CAPTURE_MODE',
         code: 0x5013,
-        type: DataType.UINT16,
-        description: 'Still capture mode',
+        type: DataType.UINT32,
+        description: 'Get/Set the drive mode.',
         writable: true,
         enum: {
-            SINGLE: 0x0001,
-            BURST: 0x0002,
-            TIMELAPSE: 0x0003,
+            Normal: 0x00000001,
+            'Continuous Shooting Hi': 0x00010002,
+            'Continuous Shooting Hi+': 0x00018010,
+            'Continuous Shooting Hi-Live': 0x00018011,
+            'Continuous Shooting Lo': 0x00018012,
+            'Continuous Shooting': 0x00018013,
+            'Continuous Shooting Speed Priority': 0x00018014,
+            'Continuous Shooting Mid': 0x00018015,
+            'Continuous Shooting Mid-Live': 0x00018016,
+            'Continuous Shooting Lo-Live': 0x00018017,
+            Timelapse: 0x00020003,
+            'Self Timer 5 Sec.': 0x00038003,
+            'Self Timer 10 Sec.': 0x00038004,
+            'Self Timer 2 Sec.': 0x00038005,
+            'Continuous Bracket 0.3 EV 2 Img. +': 0x0004c237,
+            'Continuous Bracket 0.3 EV 2 Img. -': 0x0004c23f,
+            'Continuous Bracket 0.3 EV 3 Img.': 0x00048337,
+            'Continuous Bracket 0.3 EV 5 Img.': 0x00048537,
+            'Continuous Bracket 0.3 EV 7 Img.': 0x00048737,
+            'Continuous Bracket 0.3 EV 9 Img.': 0x00048937,
+            'Continuous Bracket 0.5 EV 2 Img. +': 0x0004c257,
+            'Continuous Bracket 0.5 EV 2 Img. -': 0x0004c25f,
+            'Continuous Bracket 0.5 EV 3 Img.': 0x00048357,
+            'Continuous Bracket 0.5 EV 5 Img.': 0x00048557,
+            'Continuous Bracket 0.5 EV 7 Img.': 0x00048757,
+            'Continuous Bracket 0.5 EV 9 Img.': 0x00048957,
+            'Continuous Bracket 0.7 EV 2 Img. +': 0x0004c277,
+            'Continuous Bracket 0.7 EV 2 Img. -': 0x0004c27f,
+            'Continuous Bracket 0.7 EV 3 Img.': 0x00048377,
+            'Continuous Bracket 0.7 EV 5 Img.': 0x00048577,
+            'Continuous Bracket 0.7 EV 7 Img.': 0x00048777,
+            'Continuous Bracket 0.7 EV 9 Img.': 0x00048977,
+            'Continuous Bracket 1.0 EV 2 Img. +': 0x0004c211,
+            'Continuous Bracket 1.0 EV 2 Img. -': 0x0004c219,
+            'Continuous Bracket 1.0 EV 3 Img.': 0x00048311,
+            'Continuous Bracket 1.0 EV 5 Img.': 0x00048511,
+            'Continuous Bracket 1.0 EV 7 Img.': 0x00048711,
+            'Continuous Bracket 1.0 EV 9 Img.': 0x00048911,
+            'Continuous Bracket 1.3 EV 2 Img. +': 0x0004c241,
+            'Continuous Bracket 1.3 EV 2 Img. -': 0x0004c249,
+            'Continuous Bracket 1.3 EV 3 Img.': 0x00048341,
+            'Continuous Bracket 1.3 EV 5 Img.': 0x00048541,
+            'Continuous Bracket 1.3 EV 7 Img.': 0x00048741,
+            'Continuous Bracket 1.5 EV 2 Img. +': 0x0004c261,
+            'Continuous Bracket 1.5 EV 2 Img. -': 0x0004c269,
+            'Continuous Bracket 1.5 EV 3 Img.': 0x00048361,
+            'Continuous Bracket 1.5 EV 5 Img.': 0x00048561,
+            'Continuous Bracket 1.5 EV 7 Img.': 0x00048761,
+            'Continuous Bracket 1.7 EV 2 Img. +': 0x0004c281,
+            'Continuous Bracket 1.7 EV 2 Img. -': 0x0004c289,
+            'Continuous Bracket 1.7 EV 3 Img.': 0x00048381,
+            'Continuous Bracket 1.7 EV 5 Img.': 0x00048581,
+            'Continuous Bracket 1.7 EV 7 Img.': 0x00048781,
+            'Continuous Bracket 2.0 EV 2 Img. +': 0x0004c221,
+            'Continuous Bracket 2.0 EV 2 Img. -': 0x0004c229,
+            'Continuous Bracket 2.0 EV 3 Img.': 0x00048321,
+            'Continuous Bracket 2.0 EV 5 Img.': 0x00048521,
+            'Continuous Bracket 2.0 EV 7 Img.': 0x00048721,
+            'Continuous Bracket 2.3 EV 2 Img. +': 0x0004c251,
+            'Continuous Bracket 2.3 EV 2 Img. -': 0x0004c259,
+            'Continuous Bracket 2.3 EV 3 Img.': 0x00048351,
+            'Continuous Bracket 2.3 EV 5 Img.': 0x00048551,
+            'Continuous Bracket 2.5 EV 2 Img. +': 0x0004c271,
+            'Continuous Bracket 2.5 EV 2 Img. -': 0x0004c279,
+            'Continuous Bracket 2.5 EV 3 Img.': 0x00048371,
+            'Continuous Bracket 2.5 EV 5 Img.': 0x00048571,
+            'Continuous Bracket 2.7 EV 2 Img. +': 0x0004c291,
+            'Continuous Bracket 2.7 EV 2 Img. -': 0x0004c299,
+            'Continuous Bracket 2.7 EV 3 Img.': 0x00048391,
+            'Continuous Bracket 2.7 EV 5 Img.': 0x00048591,
+            'Continuous Bracket 3.0 EV 2 Img. +': 0x0004c231,
+            'Continuous Bracket 3.0 EV 2 Img. -': 0x0004c239,
+            'Continuous Bracket 3.0 EV 3 Img.': 0x00048331,
+            'Continuous Bracket 3.0 EV 5 Img.': 0x00048531,
+            'Single Bracket 0.3 EV 2 Img. +': 0x0005c236,
+            'Single Bracket 0.3 EV 2 Img. -': 0x0005c23e,
+            'Single Bracket 0.3 EV 3 Img.': 0x00058336,
+            'Single Bracket 0.3 EV 5 Img.': 0x00058536,
+            'Single Bracket 0.3 EV 7 Img.': 0x00058736,
+            'Single Bracket 0.3 EV 9 Img.': 0x00058936,
+            'Single Bracket 0.5 EV 2 Img. +': 0x0005c256,
+            'Single Bracket 0.5 EV 2 Img. -': 0x0005c25e,
+            'Single Bracket 0.5 EV 3 Img.': 0x00058356,
+            'Single Bracket 0.5 EV 5 Img.': 0x00058556,
+            'Single Bracket 0.5 EV 7 Img.': 0x00058756,
+            'Single Bracket 0.5 EV 9 Img.': 0x00058956,
+            'Single Bracket 0.7 EV 2 Img. +': 0x0005c276,
+            'Single Bracket 0.7 EV 2 Img. -': 0x0005c27e,
+            'Single Bracket 0.7 EV 3 Img.': 0x00058376,
+            'Single Bracket 0.7 EV 5 Img.': 0x00058576,
+            'Single Bracket 0.7 EV 7 Img.': 0x00058776,
+            'Single Bracket 0.7 EV 9 Img.': 0x00058976,
+            'Single Bracket 1.0 EV 2 Img. +': 0x0005c210,
+            'Single Bracket 1.0 EV 2 Img. -': 0x0005c218,
+            'Single Bracket 1.0 EV 3 Img.': 0x00058310,
+            'Single Bracket 1.0 EV 5 Img.': 0x00058510,
+            'Single Bracket 1.0 EV 7 Img.': 0x00058710,
+            'Single Bracket 1.0 EV 9 Img.': 0x00058910,
+            'Single Bracket 1.3 EV 2 Img. +': 0x0005c240,
+            'Single Bracket 1.3 EV 2 Img. -': 0x0005c248,
+            'Single Bracket 1.3 EV 3 Img.': 0x00058340,
+            'Single Bracket 1.3 EV 5 Img.': 0x00058540,
+            'Single Bracket 1.3 EV 7 Img.': 0x00058740,
+            'Single Bracket 1.5 EV 2 Img. +': 0x0005c260,
+            'Single Bracket 1.5 EV 2 Img. -': 0x0005c268,
+            'Single Bracket 1.5 EV 3 Img.': 0x00058360,
+            'Single Bracket 1.5 EV 5 Img.': 0x00058560,
+            'Single Bracket 1.5 EV 7 Img.': 0x00058760,
+            'Single Bracket 1.7 EV 2 Img. +': 0x0005c280,
+            'Single Bracket 1.7 EV 2 Img. -': 0x0005c288,
+            'Single Bracket 1.7 EV 3 Img.': 0x00058380,
+            'Single Bracket 1.7 EV 5 Img.': 0x00058580,
+            'Single Bracket 1.7 EV 7 Img.': 0x00058780,
+            'Single Bracket 2.0 EV 2 Img. +': 0x0005c220,
+            'Single Bracket 2.0 EV 2 Img. -': 0x0005c228,
+            'Single Bracket 2.0 EV 3 Img.': 0x00058320,
+            'Single Bracket 2.0 EV 5 Img.': 0x00058520,
+            'Single Bracket 2.0 EV 7 Img.': 0x00058720,
+            'Single Bracket 2.3 EV 2 Img. +': 0x0005c250,
+            'Single Bracket 2.3 EV 2 Img. -': 0x0005c258,
+            'Single Bracket 2.3 EV 3 Img.': 0x00058350,
+            'Single Bracket 2.3 EV 5 Img.': 0x00058550,
+            'Single Bracket 2.5 EV 2 Img. +': 0x0005c270,
+            'Single Bracket 2.5 EV 2 Img. -': 0x0005c278,
+            'Single Bracket 2.5 EV 3 Img.': 0x00058370,
+            'Single Bracket 2.5 EV 5 Img.': 0x00058570,
+            'Single Bracket 2.7 EV 2 Img. +': 0x0005c290,
+            'Single Bracket 2.7 EV 2 Img. -': 0x0005c298,
+            'Single Bracket 2.7 EV 3 Img.': 0x00058390,
+            'Single Bracket 2.7 EV 5 Img.': 0x00058590,
+            'Single Bracket 3.0 EV 2 Img. +': 0x0005c230,
+            'Single Bracket 3.0 EV 2 Img. -': 0x0005c238,
+            'Single Bracket 3.0 EV 3 Img.': 0x00058330,
+            'Single Bracket 3.0 EV 5 Img.': 0x00058530,
+            'White Balance Bracket Lo': 0x00068018,
+            'White Balance Bracket Hi': 0x00068028,
+            'DRO Bracket Lo': 0x00078019,
+            'DRO Bracket Hi': 0x00078029,
+            'LPF Bracket': 0x0007801a,
+            'Remote Commander': 0x0007800a,
+            'Mirror Up': 0x0007800b,
+            'Self Portrait 1 Person': 0x00078006,
+            'Self Portrait 2 People': 0x00078007,
+            'Continuous Self Timer 3 Img.': 0x00088008,
+            'Continuous Self Timer 5 Img.': 0x00088009,
+            'Continuous Self Timer 3 Img. 5 Sec.': 0x0008800c,
+            'Continuous Self Timer 5 Img. 5 Sec.': 0x0008800d,
+            'Continuous Self Timer 3 Img. 2 Sec.': 0x0008800e,
+            'Continuous Self Timer 5 Img. 2 Sec.': 0x0008800f,
+            'Spot Burst Shooting Lo': 0x00098030,
+            'Spot Burst Shooting Mid': 0x00098031,
+            'Spot Burst Shooting Hi': 0x00098032,
+            'Focus Bracket': 0x000a8040,
         },
     },
 
@@ -114,71 +434,11 @@ export const SonyProperties = {
         name: 'OSD_IMAGE_MODE',
         code: 0xd207,
         type: DataType.UINT8,
-        description: 'On-screen display image mode',
+        description: 'Get/Set the OSD image mode',
         writable: true,
         enum: {
             OFF: 0x00,
             ON: 0x01,
-        },
-    },
-
-    SHUTTER_SPEED: {
-        name: 'SHUTTER_SPEED',
-        code: 0xd20d,
-        type: DataType.UINT32,
-        unit: 'seconds',
-        description: 'Sony-specific shutter speed encoding with bulb mode support',
-        writable: true,
-        encode: (value: string) => {
-            let numValue: number
-            if (value === 'BULB') numValue = 0x00000000
-            else if (value === 'N/A') numValue = 0xffffffff
-            else if (value.startsWith('1/')) {
-                // Handle fractional format (e.g., "1/250")
-                const denom = parseInt(value.substring(2))
-                numValue = (0x0001 << 16) | denom
-            } else {
-                // Handle seconds format (e.g., '1.5"' or "1.5")
-                const cleanValue = value.replace('"', '')
-                const seconds = parseFloat(cleanValue)
-                if (!isNaN(seconds)) {
-                    numValue = (Math.round(seconds * 10) << 16) | 0x000a
-                } else {
-                    numValue = 0xffffffff // N/A
-                }
-            }
-            return encodePTPValue(numValue, DataType.UINT32)
-        },
-        decode: (value: HexCode | Uint8Array) => {
-            const num = typeof value === 'number' ? value : 0
-            if (num === 0x00000000) return 'BULB'
-            if (num === 0xffffffff) return 'N/A'
-
-            const numerator = (num >> 16) & 0xffff
-            const denominator = num & 0xffff
-
-            if (denominator === 0x000a) {
-                // Real number display (e.g., 1.5")
-                return `${numerator / 10}"`
-            } else if (numerator === 0x0001) {
-                // Fraction display (e.g., 1/1000)
-                return `1/${denominator}`
-            } else {
-                return `${numerator}/${denominator}`
-            }
-        },
-    },
-
-    CAPTURE_STATUS: {
-        name: 'CAPTURE_STATUS',
-        code: 0xd215,
-        type: DataType.UINT8,
-        description: 'Camera capture status',
-        writable: false,
-        enum: {
-            IDLE: 0x00,
-            CAPTURING: 0x01,
-            PROCESSING: 0x02,
         },
     },
 
@@ -186,76 +446,53 @@ export const SonyProperties = {
         name: 'LIVE_VIEW_STATUS',
         code: 0xd221,
         type: DataType.UINT8,
-        description: 'Live view status',
+        description: 'Get the live view status.',
         writable: false,
         enum: {
-            OFF: 0x00,
-            ON: 0x01,
+            SUPPORTED_DISABLED: 0x00,
+            SUPPORETED_ENABLED: 0x01,
+            NOT_SUPPORTED: 0x02,
         },
     },
 
-    SAVE_MEDIA: {
-        name: 'SAVE_MEDIA',
+    STILL_IMAGE_SAVE_DESTINATION: {
+        name: 'STILL_IMAGE_SAVE_DESTINATION',
         code: 0xd222,
         type: DataType.UINT8,
-        description: 'Where to save captured images',
+        description: 'Get the information of still image save destination.',
         writable: true,
         enum: {
-            CAMERA: 0x00,
-            HOST: 0x01,
-            BOTH: 0x02,
+            CAMERA_DEVICE: 0x0001,
+            HOST_DEVICE: 0x0010,
+            BOTH_DEVICES: 0x0011,
         },
     },
 
-    DIAL_MODE: {
-        name: 'DIAL_MODE',
+    POSITION_KEY_SETTING: {
+        name: 'POSITION_KEY_SETTING',
         code: 0xd25a,
         type: DataType.UINT8,
-        description: 'Camera dial mode control (controls which setting takes priority between host and camera)',
+        description: 'Get/Set the position key setting (controls which setting takes priority between host and camera)',
         writable: true,
         enum: {
-            CAMERA: 0x00,
-            HOST: 0x01,
+            CAMERA_PRIORITY: 0x00,
+            HOST_PRIORITY: 0x01,
         },
     },
 
-    SHUTTER_BUTTON_CONTROL: {
-        name: 'SHUTTER_BUTTON_CONTROL',
-        code: 0xd2c1,
-        type: DataType.UINT16,
-        description: 'Shutter button control property',
-        writable: true,
-        enum: {
-            RELEASE: 0x0000,
-            FULL_PRESS: 0x0001,
-            HALF_PRESS: 0x0002,
-        },
-    },
-
-    FOCUS_BUTTON_CONTROL: {
-        name: 'FOCUS_BUTTON_CONTROL',
-        code: 0xd2c2,
-        type: DataType.UINT16,
-        description: 'Focus button control property',
-        writable: true,
-        enum: {
-            RELEASE: 0x0000,
-            FULL_PRESS: 0x0001,
-            HALF_PRESS: 0x0002,
-        },
-    },
-
-    LIVE_VIEW_CONTROL: {
-        name: 'LIVE_VIEW_CONTROL',
+    SET_LIVE_VIEW_ENABLE: {
+        name: 'SET_LIVE_VIEW_ENABLE',
         code: 0xd313,
         type: DataType.UINT16,
-        description: 'Live view control property',
+        // TODO enable this
+        description:
+            'Set live view enable. When using Live View while connected in “Remote Control with Transfer Mode,” it is necessary to enable the feature using this Control Code.',
         writable: true,
         enum: {
             DISABLE: 0x0001,
             ENABLE: 0x0002,
         },
     },
-} as const satisfies PropertyDefinition
+} as const satisfies PropertyDefinition<any>
 
 export type SonyPropertyDefinitions = typeof SonyProperties

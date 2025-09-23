@@ -88,12 +88,11 @@ export interface Operation {
               description: string
           }>
         | number[] // Can be parameter definitions OR runtime values
-    dataIn?: boolean
-    dataOut?: boolean
+    expectsData?: boolean
+    respondsWithData?: boolean
     dataDescription?: string
     // Runtime fields
     data?: Uint8Array
-    hasDataPhase?: boolean
     maxDataLength?: number
 }
 
@@ -136,7 +135,7 @@ export interface Event {
 /**
  * Property definition
  */
-export interface Property {
+export interface Property<T> {
     name: string
     code: HexCode
     type: DataTypeValue
@@ -145,7 +144,7 @@ export interface Property {
     writable?: boolean
     descriptor?: PropertyDescriptor<any>
     enum?: Record<string, HexCode>
-    encode?: (value: any) => Uint8Array
+    encode?: (value: T) => Uint8Array
     decode?: (value: Uint8Array) => any
 }
 
@@ -182,15 +181,6 @@ export interface Format {
     mimeType?: string
 }
 
-/**
- * Control definition
- */
-export interface Control {
-    property: HexCode
-    value: HexCode
-    description: string
-}
-
 // ============================================================================
 // Collection Types (for constant objects)
 // ============================================================================
@@ -213,7 +203,7 @@ export type EventDefinition = Record<string, Event>
 /**
  * Property constants collection
  */
-export type PropertyDefinition = Record<string, Property>
+export type PropertyDefinition<T> = Record<string, Property<T>>
 
 /**
  * Storage constants collection
@@ -224,8 +214,3 @@ export type StorageDefinition = Record<string, Storage>
  * Format constants collection
  */
 export type FormatDefinition = Record<string, Format>
-
-/**
- * Control constants collection
- */
-export type ControlDefinition = Record<string, Control>

@@ -364,6 +364,6 @@ export const PTPProperties = {
     description: 'Copyright information for metadata',
     writable: true
   }
-} as const satisfies PropertyDefinition
+} as const satisfies PropertyDefinition<any>
 
 export type PTPPropertyDefinitions = typeof PTPProperties
