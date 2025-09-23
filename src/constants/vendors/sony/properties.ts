@@ -3,7 +3,7 @@
  */
 
 import { DataType, PropertyDefinition } from '@constants/types'
-import { PTPProperties } from '@constants/ptp/properties'
+import { PTPProperties, parseAperture, parseISO, parseShutter } from '@constants/ptp/properties'
 import { encodePTPValue, decodePTPValue } from '@core/buffers'
 
 export const SonyProperties = {
@@ -14,115 +14,49 @@ export const SonyProperties = {
         code: 0x5007,
         type: DataType.UINT16,
         unit: 'F-Stop',
-        enum: {
-            '1': 0x0064,
-            '1.1': 0x006e,
-            '1.2': 0x0078,
-            '1.3': 0x0082,
-            '1.4': 0x008c,
-            '1.6': 0x00a0,
-            '1.7': 0x00aa,
-            '1.8': 0x00b4,
-            '2': 0x00c8,
-            '2.2': 0x00dc,
-            '2.4': 0x00f0,
-            '2.5': 0x00fa,
-            '2.8': 0x0118,
-            '3.1': 0x0136,
-            '3.2': 0x0140,
-            '3.4': 0x0154,
-            '3.5': 0x015e,
-            '3.7': 0x0172,
-            '4': 0x0190,
-            '4.4': 0x01b8,
-            '4.5': 0x01c2,
-            '4.8': 0x01e0,
-            '5': 0x01f4,
-            '5.2': 0x0208,
-            '5.6': 0x0230,
-            '6.2': 0x026c,
-            '6.3': 0x0276,
-            '6.7': 0x029e,
-            '6.8': 0x02a8,
-            '7.1': 0x02c6,
-            '7.3': 0x02da,
-            '8': 0x0320,
-            '8.7': 0x0366,
-            '9': 0x0384,
-            '9.5': 0x03b6,
-            '9.6': 0x03c0,
-            '10': 0x03e8,
-            '11': 0x044c,
-            '13': 0x0514,
-            '14': 0x0578,
-            '16': 0x0640,
-            '18': 0x0708,
-            '19': 0x076c,
-            '20': 0x07d0,
-            '22': 0x0898,
-            '25': 0x09c4,
-            '27': 0x0a8c,
-            '29': 0x0b54,
-            '32': 0x0c80,
-            '36': 0x0e10,
-            '38': 0x0ed8,
-            '40': 0x0fa0,
-            '45': 0x1194,
-            '51': 0x13ec,
-            '54': 0x1518,
-            '57': 0x1644,
-            '64': 0x1900,
-            '72': 0x1c20,
-            '76': 0x1db0,
-            '81': 0x1fa4,
-            '90': 0x2328,
-            'Iris Close': 0xfffd,
-            '--': 0xfffe,
-            'nothing to display': 0xffff,
-        },
         description: 'Get/Set the aperture value.',
         writable: true,
+        encode: (value: string): Uint8Array => {
+            const v = String(value).toLowerCase()
+            if (v === 'iris close') return encodePTPValue(0xfffd, DataType.UINT16)
+            if (v === '--') return encodePTPValue(0xfffe, DataType.UINT16)
+            if (v === 'nothing to display') return encodePTPValue(0xffff, DataType.UINT16)
+            return encodePTPValue(Math.round(parseAperture(value) * 100), DataType.UINT16)
+        },
+        decode: (value: Uint8Array): string => {
+            const hexValue = decodePTPValue(value, DataType.UINT16)
+            
+            return hexValue === 0xfffd ? 'Iris Close' :
+                   hexValue === 0xfffe ? '--' :
+                   hexValue === 0xffff ? 'nothing to display' :
+                   (hexValue / 100).toString()
+        },
     },
 
     SHUTTER_SPEED: {
         name: 'SHUTTER_SPEED',
         code: 0xd20d,
         type: DataType.UINT32,
-
-        // BULB = 0x00000000
-        // nothing to display = 0xFFFFFFFF
-        // Upper two bytes: numerator, Lower two bytes: denominator
-        // In the case of the shutter speed is displayed as "Real Number" on the camera, the denominator is fixed 0x000A. (e.g. 0x000F000A: 0x000F (means 15) / 0x0000A (means 10) = 1.5")
-        // In the case of the shutter speed is displayed as "Fraction Number" on the camera, the numerator is fixed 0x0001. (e.g. 0x000103E8: 0x0001 (means 1) / 0x03E8 (means 1000) = 1/1000)
-        // Note: min: 0x00000000, max: 0xFFFFFFFF, step: 0x00000001
-
-        encode: (value: string): Uint8Array => {
-            if (value === 'BULB') return encodePTPValue(0x00000000, DataType.UINT16)
-            if (value === 'nothing to display') return encodePTPValue(0xffffffff, DataType.UINT16)
-            if (value.includes('/')) {
-                const [numerator, denominator] = value.split('/')
-                return encodePTPValue(
-                    (Math.round(parseInt(numerator || '1') * 10) << 16) | parseInt(denominator || '1'),
-                    DataType.UINT16
-                )
-            }
-            const seconds = parseFloat(value.replace('"', ''))
-            return encodePTPValue(Math.round(seconds * 10) << 16, DataType.UINT16)
-        },
-        decode: (value: Uint8Array) => {
-            // convert to hex code
-            const hexValue = decodePTPValue(value, DataType.UINT16)
-            if (hexValue === 0x00000000) return 'BULB'
-            if (hexValue === 0xffffffff) return 'nothing to display'
-            if (hexValue.toString(16).startsWith('0x0001')) {
-                const denominator = parseInt(hexValue.toString(16).substring(6))
-                return `1/${denominator}`
-            }
-            const seconds = parseInt(hexValue.toString(16).substring(6))
-            return `${seconds}"`
-        },
         description: 'Get/Set the shutter speed.',
         writable: true,
+        encode: (value: string): Uint8Array => {
+            const [n, d] = parseShutter(value)
+            if (n === 0 && d === 0) return encodePTPValue(0x00000000, DataType.UINT32)
+            return encodePTPValue((n << 16) | d, DataType.UINT32)
+        },
+        decode: (value: Uint8Array): string => {
+            const hexValue = decodePTPValue(value, DataType.UINT32)
+            if (hexValue === 0x00000000) return 'BULB'
+            
+            const numerator = (hexValue >> 16) & 0xffff
+            const denominator = hexValue & 0xffff
+            
+            return denominator === 0x000a 
+                ? `${numerator / 10}"`
+                : numerator === 1 
+                  ? `1/${denominator}`
+                  : `${numerator}/${denominator}`
+        },
     },
 
     ISO: {
@@ -132,138 +66,28 @@ export const SonyProperties = {
         unit: 'ISO',
         description: 'Get/Set the ISO sensitivity.',
         writable: true,
-        enum: {
-            'ISO 10': 0x0000000a,
-            'ISO 12': 0x0000000c,
-            'ISO 16': 0x00000010,
-            'ISO 20': 0x00000014,
-            'ISO 25': 0x00000019,
-            'ISO 32': 0x00000020,
-            'ISO 40': 0x00000028,
-            'ISO 50': 0x00000032,
-            'ISO 64': 0x00000040,
-            'ISO 80': 0x00000050,
-            'ISO 100': 0x00000064,
-            'ISO 125': 0x0000007d,
-            'ISO 160': 0x000000a0,
-            'ISO 200': 0x000000c8,
-            'ISO 250': 0x000000fa,
-            'ISO 320': 0x00000140,
-            'ISO 400': 0x00000190,
-            'ISO 500': 0x000001f4,
-            'ISO 640': 0x00000280,
-            'ISO 800': 0x00000320,
-            'ISO 1000': 0x000003e8,
-            'ISO 1250': 0x000004e2,
-            'ISO 1600': 0x00000640,
-            'ISO 2000': 0x000007d0,
-            'ISO 2500': 0x000009c4,
-            'ISO 3200': 0x00000c80,
-            'ISO 4000': 0x00000fa0,
-            'ISO 5000': 0x00001388,
-            'ISO 6400': 0x00001900,
-            'ISO 8000': 0x00001f40,
-            'ISO 10000': 0x00002710,
-            'ISO 12800': 0x00003200,
-            'ISO 16000': 0x00003e80,
-            'ISO 20000': 0x00004e20,
-            'ISO 25600': 0x00006400,
-            'ISO 32000': 0x00007d00,
-            'ISO 40000': 0x00009c40,
-            'ISO 51200': 0x0000c800,
-            'ISO 64000': 0x0000fa00,
-            'ISO 80000': 0x00013880,
-            'ISO 102400': 0x00019000,
-            'ISO 128000': 0x0001f400,
-            'ISO 160000': 0x00027100,
-            'ISO 204800': 0x00032000,
-            'ISO 256000': 0x0003e800,
-            'ISO 320000': 0x0004e200,
-            'ISO 409600': 0x00064000,
-            'ISO 512000': 0x0007d000,
-            'ISO 640000': 0x0009c400,
-            'ISO 819200': 0x000c8000,
-            'Multi Frame NR ISO 10': 0x0100000a,
-            'Multi Frame NR ISO 12': 0x0100000c,
-            'Multi Frame NR ISO 16': 0x01000010,
-            'Multi Frame NR ISO 20': 0x01000014,
-            'Multi Frame NR ISO 25': 0x01000019,
-            'Multi Frame NR ISO 32': 0x01000020,
-            'Multi Frame NR ISO 40': 0x01000028,
-            'Multi Frame NR ISO 50': 0x01000032,
-            'Multi Frame NR ISO 64': 0x01000040,
-            'Multi Frame NR ISO 80': 0x01000050,
-            'Multi Frame NR ISO 100': 0x01000064,
-            'Multi Frame NR ISO 125': 0x0100007d,
-            'Multi Frame NR ISO 160': 0x010000a0,
-            'Multi Frame NR ISO 200': 0x010000c8,
-            'Multi Frame NR ISO 250': 0x010000fa,
-            'Multi Frame NR ISO 320': 0x01000140,
-            'Multi Frame NR ISO 400': 0x01000190,
-            'Multi Frame NR ISO 500': 0x010001f4,
-            'Multi Frame NR ISO 640': 0x01000280,
-            'Multi Frame NR ISO 800': 0x01000320,
-            'Multi Frame NR ISO 1000': 0x010003e8,
-            'Multi Frame NR ISO 1250': 0x010004e2,
-            'Multi Frame NR ISO 1600': 0x01000640,
-            'Multi Frame NR ISO 2000': 0x010007d0,
-            'Multi Frame NR ISO 2500': 0x010009c4,
-            'Multi Frame NR ISO 3200': 0x01000c80,
-            'Multi Frame NR ISO 4000': 0x01000fa0,
-            'Multi Frame NR ISO 5000': 0x01001388,
-            'Multi Frame NR ISO 6400': 0x01001900,
-            'Multi Frame NR ISO 8000': 0x01001f40,
-            'Multi Frame NR ISO 10000': 0x01002710,
-            'Multi Frame NR ISO 12800': 0x01003200,
-            'Multi Frame NR ISO 16000': 0x01003e80,
-            'Multi Frame NR ISO 25600': 0x01006400,
-            'Multi Frame NR ISO 51200': 0x0100c800,
-            'Multi Frame NR ISO 102400': 0x01019000,
-            'Multi Frame NR ISO 204800': 0x01032000,
-            'Multi Frame NR ISO 409600': 0x01064000,
-            'Multi Frame NR ISO 819200': 0x010c8000,
-            'Multi Frame NR ISO AUTO': 0x01ffffff,
-            'Multi Frame NR High ISO 10': 0x0200000a,
-            'Multi Frame NR High ISO 12': 0x0200000c,
-            'Multi Frame NR High ISO 16': 0x02000010,
-            'Multi Frame NR High ISO 20': 0x02000014,
-            'Multi Frame NR High ISO 25': 0x02000019,
-            'Multi Frame NR High ISO 32': 0x02000020,
-            'Multi Frame NR High ISO 40': 0x02000028,
-            'Multi Frame NR High ISO 50': 0x02000032,
-            'Multi Frame NR High ISO 64': 0x02000040,
-            'Multi Frame NR High ISO 80': 0x02000050,
-            'Multi Frame NR High ISO 100': 0x02000064,
-            'Multi Frame NR High ISO 125': 0x0200007d,
-            'Multi Frame NR High ISO 160': 0x020000a0,
-            'Multi Frame NR High ISO 200': 0x020000c8,
-            'Multi Frame NR High ISO 250': 0x020000fa,
-            'Multi Frame NR High ISO 320': 0x02000140,
-            'Multi Frame NR High ISO 400': 0x02000190,
-            'Multi Frame NR High ISO 500': 0x020001f4,
-            'Multi Frame NR High ISO 640': 0x02000280,
-            'Multi Frame NR High ISO 800': 0x02000320,
-            'Multi Frame NR High ISO 1000': 0x020003e8,
-            'Multi Frame NR High ISO 1250': 0x020004e2,
-            'Multi Frame NR High ISO 1600': 0x02000640,
-            'Multi Frame NR High ISO 2000': 0x020007d0,
-            'Multi Frame NR High ISO 2500': 0x020009c4,
-            'Multi Frame NR High ISO 3200': 0x02000c80,
-            'Multi Frame NR High ISO 4000': 0x02000fa0,
-            'Multi Frame NR High ISO 5000': 0x02001388,
-            'Multi Frame NR High ISO 6400': 0x02001900,
-            'Multi Frame NR High ISO 8000': 0x02001f40,
-            'Multi Frame NR High ISO 10000': 0x02002710,
-            'Multi Frame NR High ISO 12800': 0x02003200,
-            'Multi Frame NR High ISO 16000': 0x02003e80,
-            'Multi Frame NR High ISO 25600': 0x02006400,
-            'Multi Frame NR High ISO 51200': 0x0200c800,
-            'Multi Frame NR High ISO 102400': 0x02019000,
-            'Multi Frame NR High ISO 204800': 0x02032000,
-            'Multi Frame NR High ISO 409600': 0x02064000,
-            'Multi Frame NR High ISO 819200': 0x020c8000,
-            'Multi Frame NR High ISO AUTO': 0x02ffffff,
-            'ISO AUTO': 0x00ffffff,
+        encode: (value: string): Uint8Array => {
+            const v = String(value).toLowerCase()
+            const isoValue = parseISO(value)
+            if (isoValue === 0xffffff || v.includes('auto')) return encodePTPValue(0x00ffffff, DataType.UINT32)
+            const modePrefix = v.includes('multi frame nr high') ? 0x02000000
+                : v.includes('multi frame nr') ? 0x01000000 : 0x00000000
+            return encodePTPValue(modePrefix | isoValue, DataType.UINT32)
+        },
+        decode: (value: Uint8Array): string => {
+            const hexValue = decodePTPValue(value, DataType.UINT32)
+            if (hexValue === 0x00ffffff) return 'ISO AUTO'
+
+            const modePrefix = hexValue & 0xff000000
+            const isoValue = hexValue & 0x00ffffff
+
+            return modePrefix === 0x00000000
+                ? `ISO ${isoValue}`
+                : modePrefix === 0x01000000
+                  ? `Multi Frame NR ISO ${isoValue}`
+                  : modePrefix === 0x02000000
+                    ? `Multi Frame NR High ISO ${isoValue}`
+                    : `Unknown ISO mode: 0x${hexValue.toString(16).padStart(8, '0')}`
         },
     },
 

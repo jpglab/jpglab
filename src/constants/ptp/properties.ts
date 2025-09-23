@@ -5,6 +5,46 @@
 import { DataType, PropertyDefinition, HexCode } from '@constants/types'
 import { decodePTPValue, encodePTPValue } from '@core/buffers'
 
+// Helper functions for parsing various input formats
+export const parseAperture = (v: string | number): number => {
+    const s = String(v).toLowerCase()
+        .replace(/[fƒ]/g, '')  // Remove f or fancy ƒ
+        .replace(/[\/:\s]/g, '') // Remove /, :, spaces
+    return parseFloat(s) || 0
+}
+
+export const parseISO = (v: string | number): number => {
+    const s = String(v).toLowerCase().replace(/iso\s*/g, '')
+    if (s === 'auto') return 0xffffff // Special auto value
+    return parseInt(s) || 0
+}
+
+export const parseShutter = (v: string): [number, number] => {
+    let s = String(v).toLowerCase().trim()
+    if (s === 'bulb' || s === 'b') return [0, 0]
+    
+    // Remove quotes and time suffixes
+    s = s.replace(/["'`]/g, '').replace(/\s*(sec(onds?)?|s)\s*$/g, '')
+    
+    // Handle fractions like 1/250 or 1/8000
+    if (s.includes('/')) {
+        const parts = s.split('/')
+        const n = parseInt(parts[0]) || 1
+        const d = parseInt(parts[1]) || 1
+        return [n, d]
+    }
+    
+    // Parse as decimal
+    const num = parseFloat(s)
+    if (isNaN(num)) return [1, 1]
+    
+    // For values < 1, convert to fraction (e.g., 0.25 -> 1/4)
+    if (num < 1) return [1, Math.round(1 / num)]
+    
+    // For whole seconds, use denominator 10 for display as X.0"
+    return [Math.round(num * 10), 10]
+}
+
 /**
  * PTP standard property definitions with type validation
  */
