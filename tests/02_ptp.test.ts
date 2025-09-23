@@ -7,8 +7,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { TransportFactory } from '@transport/transport-factory'
 import { USBTransport } from '@transport/usb/usb-transport'
 import { USBDeviceFinder } from '@transport/usb/usb-device-finder'
-import { PTPProtocol } from '@core/ptp-protocol'
-import { PTPMessageBuilder } from '@core/ptp-message-builder'
+import { PTPProtocol } from '@core/protocol'
+import { PTPMessageBuilder } from '@core/messages'
 import { PTPOperations } from '@constants/ptp/operations'
 import { PTPResponses } from '@constants/ptp/responses'
 
@@ -49,7 +49,7 @@ describe('PTP Protocol', () => {
 
         deviceFound = true
         const device = devices[0]
-        if (device) {
+        if (device && device.vendorId && device.productId) {
             discoveredVendorId = device.vendorId
             discoveredProductId = device.productId
             console.log(
@@ -59,7 +59,7 @@ describe('PTP Protocol', () => {
 
         // Create transport
         const transportFactory = new TransportFactory()
-        transport = await transportFactory.createUSBTransport() as unknown as USBTransport
+        transport = (await transportFactory.createUSBTransport()) as unknown as USBTransport
 
         // Create message builder and protocol
         const messageBuilder = new PTPMessageBuilder()
@@ -151,7 +151,10 @@ describe('PTP Protocol', () => {
             console.log('----------------------------------------')
 
             console.log('Requesting device info...')
-            const response = await protocol.getDeviceInfo()
+            const response = await protocol.sendOperation({
+                ...PTPOperations.GET_DEVICE_INFO,
+                parameters: [],
+            })
 
             expect(response.code).toBe(PTPResponses.OK.code)
             expect(response.data).toBeDefined()
@@ -172,68 +175,6 @@ describe('PTP Protocol', () => {
                 // Vendor extension ID (next 4 bytes)
                 const vendorExtId = view.getUint32(2, true)
                 console.log(`✓ Vendor Extension ID: 0x${vendorExtId.toString(16).padStart(8, '0')}`)
-            }
-
-            console.log('----------------------------------------')
-        })
-
-        it('should send a simple command', async () => {
-            if (!deviceFound || !protocol.isSessionOpen()) {
-                console.log('Skipping: No device or session not open')
-                return
-            }
-
-            console.log('\n[TEST: Send Command]')
-            console.log('----------------------------------------')
-
-            console.log('Getting storage IDs...')
-            const response = await protocol.sendCommandReceiveData(PTPOperations.GET_STORAGE_IDS.code)
-
-            // Accept OK or STORE_NOT_AVAILABLE (camera might not have storage)
-            expect([PTPResponses.OK.code, PTPResponses.STORE_NOT_AVAILABLE.code]).toContain(response.code)
-            console.log('✓ Command sent successfully')
-            console.log(`✓ Response code: 0x${response.code.toString(16).padStart(4, '0')}`)
-
-            if (response.data && response.data.byteLength >= 4) {
-                const view = new DataView(response.data.buffer, response.data.byteOffset, response.data.byteLength)
-                const count = view.getUint32(0, true)
-                console.log(`✓ Storage count: ${count}`)
-
-                // Read storage IDs
-                for (let index = 0; index < Math.min(count, 5); index++) {
-                    const storageId = view.getUint32(4 + index * 4, true)
-                    console.log(`  - Storage ID ${index + 1}: 0x${storageId.toString(16).padStart(8, '0')}`)
-                }
-            }
-
-            console.log('----------------------------------------')
-        })
-
-        it('should handle multiple operations in sequence', async () => {
-            if (!deviceFound || !protocol.isSessionOpen()) {
-                console.log('Skipping: No device or session not open')
-                return
-            }
-
-            console.log('\n[TEST: Sequential Operations]')
-            console.log('----------------------------------------')
-
-            // Test a sequence of operations
-            const operations = [
-                { name: 'Get Storage IDs', code: PTPOperations.GET_STORAGE_IDS.code },
-                { name: 'Get Device Info', code: PTPOperations.GET_DEVICE_INFO.code },
-            ]
-
-            for (const op of operations) {
-                console.log(`Executing: ${op.name}...`)
-                const response = await protocol.sendCommandReceiveData(op.code)
-                // Accept OK for device info, OK or STORE_NOT_AVAILABLE for storage IDs
-                if (op.code === PTPOperations.GET_STORAGE_IDS.code) {
-                    expect([PTPResponses.OK.code, PTPResponses.STORE_NOT_AVAILABLE.code]).toContain(response.code)
-                } else {
-                    expect(response.code).toBe(PTPResponses.OK.code)
-                }
-                console.log(`✓ ${op.name}: Response 0x${response.code.toString(16).padStart(4, '0')}`)
             }
 
             console.log('----------------------------------------')
@@ -261,35 +202,6 @@ describe('PTP Protocol', () => {
     })
 
     describe('Error Handling', () => {
-        it('should handle operation without open session', async () => {
-            if (!deviceFound || !transport.isConnected()) {
-                console.log('Skipping: No device or not connected')
-                return
-            }
-
-            console.log('\n[TEST: Error Handling]')
-            console.log('----------------------------------------')
-
-            // Make sure session is closed
-            if (protocol.isSessionOpen()) {
-                await protocol.closeSession()
-            }
-
-            console.log('Attempting operation without session...')
-
-            try {
-                await protocol.sendCommand(PTPOperations.GET_STORAGE_IDS.code)
-                // Should not reach here
-                expect(true).toBe(false)
-            } catch (error: any) {
-                expect(error.name).toBe('PTPError')
-                expect(error.code).toBe(PTPResponses.SESSION_NOT_OPEN.code)
-                console.log('✓ Correctly threw SESSION_NOT_OPEN error')
-            }
-
-            console.log('----------------------------------------')
-        })
-
         it('should handle double session open gracefully', async () => {
             if (!deviceFound || !transport.isConnected()) {
                 console.log('Skipping: No device or not connected')

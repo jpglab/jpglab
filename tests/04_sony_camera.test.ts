@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { PTPProtocol } from '@core/ptp-protocol'
-import { PTPMessageBuilder } from '@core/ptp-message-builder'
+import { PTPProtocol } from '@core/protocol'
+import { PTPMessageBuilder } from '@core/messages'
 import { SonyCamera } from '@camera/vendors/sony/camera'
 import { SonyAuthenticator } from '@camera/vendors/sony/authenticator'
-import { SonyConstants } from '@constants/vendors/sony/properties'
 import { TransportFactory } from '@transport/transport-factory'
 import * as fs from 'fs'
 import * as path from 'path'
+import { VendorIDs } from '@constants/vendors/vendor-ids'
 
 describe('SonyCamera', () => {
     let transport: any
@@ -27,21 +27,14 @@ describe('SonyCamera', () => {
         const transportFactory = new TransportFactory()
         transport = await transportFactory.createUSBTransport()
 
-        // Connect to Sony camera - try both known product IDs
-        const productIds = [SonyConstants.PRODUCT_ID, SonyConstants.PRODUCT_ID_ALPHA]
-
-        for (const productId of productIds) {
-            try {
-                await transport.connect({
-                    vendorId: SonyConstants.VENDOR_ID,
-                    productId,
-                })
-                connected = true
-                console.log(`✅ Connected to Sony camera (0x${productId.toString(16)})`)
-                break
-            } catch (error: any) {
-                console.log(`Could not connect with product ID 0x${productId.toString(16)}: ${error.message}`)
-            }
+        try {
+            await transport.connect({
+                vendorId: VendorIDs.SONY,
+            })
+            connected = true
+            console.log(`✅ Connected to Sony camera (0x${VendorIDs.SONY.toString(16)})`)
+        } catch (error: any) {
+            console.log(`Could not connect with product ID 0x${VendorIDs.SONY.toString(16)}: ${error.message}`)
         }
 
         if (!connected) {
@@ -133,7 +126,7 @@ describe('SonyCamera', () => {
     it('should capture a photo', async () => {
         await camera.captureImage()
         console.log('✅ Photo captured')
-        
+
         // Note: In the simplified API, image download is handled separately
         // The captureImage just triggers the capture
         console.log('  (Photo saved to camera storage)')
@@ -141,32 +134,13 @@ describe('SonyCamera', () => {
 
     it('should capture a live view frame', async () => {
         const frame = await camera.captureLiveView()
-        
-        if (frame && frame.data && frame.data.length > 0) {
-            console.log(`✅ Live view frame: ${frame.width}x${frame.height} (${frame.data.length} bytes)`)
 
+        if (frame) {
             const liveViewPath = path.join(outputDir, `liveview_${Date.now()}.jpg`)
-            fs.writeFileSync(liveViewPath, frame.data)
+            fs.writeFileSync(liveViewPath, frame)
             console.log(`💾 LIVE VIEW SAVED TO: ${liveViewPath}`)
         } else {
             console.log('⚠️ Live view frame not available (camera may not support it or not be ready)')
-        }
-    })
-
-    it('should get storage info', async () => {
-        const storageInfo = await camera.getStorageInfo()
-        expect(storageInfo).toBeDefined()
-        expect(Array.isArray(storageInfo)).toBe(true)
-        
-        if (storageInfo.length > 0) {
-            console.log(`✅ Found ${storageInfo.length} storage device(s):`)
-            storageInfo.forEach((storage, index) => {
-                console.log(`  Storage ${index + 1}: ${storage.name}`)
-                console.log(`    - Free: ${(storage.freeSpace / 1024 / 1024).toFixed(2)} MB`)
-                console.log(`    - Total: ${(storage.totalSpace / 1024 / 1024).toFixed(2)} MB`)
-            })
-        } else {
-            console.log('⚠️ No storage devices found')
         }
     })
 

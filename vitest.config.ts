@@ -26,6 +26,7 @@ export default defineConfig({
     },
     resolve: {
         alias: {
+            '@api': resolve(__dirname, 'src/api'),
             '@application': resolve(__dirname, 'src/application'),
             '@camera': resolve(__dirname, 'src/camera'),
             '@core': resolve(__dirname, 'src/core'),
