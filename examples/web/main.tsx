@@ -1279,26 +1279,8 @@ export default function App() {
         const thumbnailCtx = thumbnailCanvas.getContext('2d')
         
         if (thumbnailCtx && frame.imageBitmap) {
-            // Calculate aspect ratio fit
-            const aspectRatio = frame.imageBitmap.width / frame.imageBitmap.height
-            const targetAspectRatio = targetWidth / targetHeight
-            
-            let drawWidth = targetWidth
-            let drawHeight = targetHeight
-            let offsetX = 0
-            let offsetY = 0
-            
-            if (aspectRatio > targetAspectRatio) {
-                drawHeight = targetWidth / aspectRatio
-                offsetY = (targetHeight - drawHeight) / 2
-            } else {
-                drawWidth = targetHeight * aspectRatio
-                offsetX = (targetWidth - drawWidth) / 2
-            }
-            
-            thumbnailCtx.fillStyle = 'rgba(0, 0, 0, 0.2)'
-            thumbnailCtx.fillRect(0, 0, targetWidth, targetHeight)
-            thumbnailCtx.drawImage(frame.imageBitmap, offsetX, offsetY, drawWidth, drawHeight)
+            // Fill the entire thumbnail canvas, stretch to fit if needed (no gaps)
+            thumbnailCtx.drawImage(frame.imageBitmap, 0, 0, targetWidth, targetHeight)
         }
         
         // Cache the thumbnail (limit cache size)
@@ -1316,6 +1298,223 @@ export default function App() {
         
         cache.set(cacheKey, { canvas: thumbnailCanvas, timestamp: frame.timestamp })
         return thumbnailCanvas
+    }
+
+    // Calculate timeline duration with constraints (30 seconds minimum, 1 hour maximum)
+    const calculateTimelineDuration = (frameCount: number) => {
+        const minTimelineDuration = 30
+        const maxTimelineDuration = 3600 // 1 hour in seconds
+        const actualDuration = frameCount > 0 ? frameCount / 30 : minTimelineDuration
+        return Math.max(minTimelineDuration, Math.min(maxTimelineDuration, actualDuration))
+    }
+
+    // Hierarchical ruler system with 4 tick levels
+    const drawHierarchicalRuler = (
+        ctx: CanvasRenderingContext2D, 
+        viewport: TimelineViewport, 
+        trackLabelWidth: number, 
+        timecodeHeight: number, 
+        totalDuration: number, 
+        zoom: number,
+        canvasWidth: number
+    ) => {
+        const fps = 30 // Project framerate
+        const pixelsPerSecond = 100 * zoom
+        const pixelsPerFrame = pixelsPerSecond / fps
+        
+        // Calculate appropriate major tick interval based on zoom level
+        const visibleTimelineWidth = canvasWidth - trackLabelWidth
+        const visibleDurationSeconds = visibleTimelineWidth / pixelsPerSecond
+        
+        // Target showing 4-8 major ticks across the visible viewport
+        const targetMajorTicks = 6
+        const rawMajorInterval = visibleDurationSeconds / targetMajorTicks
+        
+        // Debug logging (remove in production)
+        console.log('Ruler Debug:', {
+            zoom,
+            pixelsPerSecond,
+            visibleDurationSeconds,
+            rawMajorInterval,
+            totalDuration
+        })
+        
+        // Snap to logical intervals common in NLEs (extended for extreme zoom out)
+        const logicalIntervals = [
+            1, 2, 5, 10, 15, 30, // seconds
+            60, 120, 300, 600, 900, 1200, // minutes (up to 20 min)
+            1800, 2400, 3000, 3600, // 30min, 40min, 50min, 1 hour
+            7200, 10800, 14400, 18000 // 2hr, 3hr, 4hr, 5hr (extreme cases)
+        ]
+        
+        // Find the smallest logical interval that's >= our target
+        let majorIntervalSeconds = logicalIntervals[logicalIntervals.length - 1] // Default to largest as fallback
+        
+        // Search for the first interval that's >= our target
+        for (const interval of logicalIntervals) {
+            if (interval >= rawMajorInterval) {
+                majorIntervalSeconds = interval
+                break
+            }
+        }
+        
+        // If no predefined interval is large enough, create one dynamically
+        if (majorIntervalSeconds < rawMajorInterval) {
+            // For very large intervals, create intervals based on powers of 10
+            const magnitude = Math.pow(10, Math.floor(Math.log10(rawMajorInterval)))
+            const candidates = [magnitude, magnitude * 2, magnitude * 5, magnitude * 10]
+            for (const candidate of candidates) {
+                if (candidate >= rawMajorInterval) {
+                    majorIntervalSeconds = candidate
+                    break
+                }
+            }
+        }
+        
+        console.log('Selected majorIntervalSeconds:', majorIntervalSeconds)
+        
+        // Removed frame spacing constraint - let major intervals be determined purely by viewport needs
+        // Individual frame visibility will be handled by the subdivision system
+        
+        // Calculate visible range in seconds
+        const visibleStartSecond = Math.max(0, (viewport.offsetX - trackLabelWidth) / pixelsPerSecond)
+        const visibleEndSecond = Math.min(totalDuration, (viewport.offsetX + canvasWidth - trackLabelWidth) / pixelsPerSecond)
+        
+        // Find first major tick in visible range
+        const firstMajorTick = Math.floor(visibleStartSecond / majorIntervalSeconds) * majorIntervalSeconds
+        
+        // Draw ticks
+        for (let majorSecond = firstMajorTick; majorSecond <= visibleEndSecond + majorIntervalSeconds; majorSecond += majorIntervalSeconds) {
+            const majorWorldX = trackLabelWidth + (majorSecond * pixelsPerSecond)
+            const majorScreenX = majorWorldX - viewport.offsetX
+            
+            // Only draw if on screen
+            if (majorScreenX >= trackLabelWidth - 50 && majorScreenX <= canvasWidth + 50) {
+                // Draw major tick
+                drawTick(ctx, majorScreenX, 0, timecodeHeight, 'major')
+                
+                // Draw timecode for major tick
+                drawTimecode(ctx, majorScreenX, timecodeHeight, majorSecond)
+                
+                // Draw all subdivision levels between this major and next major
+                const framesInMajorInterval = majorIntervalSeconds * fps
+                
+                for (let frame = 1; frame < framesInMajorInterval; frame++) {
+                    const frameTime = majorSecond + (frame / fps)
+                    const frameWorldX = trackLabelWidth + (frameTime * pixelsPerSecond)
+                    const frameScreenX = frameWorldX - viewport.offsetX
+                    
+                    if (frameScreenX >= trackLabelWidth && frameScreenX <= canvasWidth) {
+                        // Determine tick type with adaptive subdivision based on spacing
+                        const tickType = getTickTypeAlwaysShow(frame, framesInMajorInterval, pixelsPerFrame)
+                        drawTick(ctx, frameScreenX, 0, timecodeHeight, tickType)
+                    }
+                }
+            }
+        }
+    }
+
+    // Get tick type - 4-level system: major, minor, major step, minor step  
+    const getTickTypeAlwaysShow = (
+        frame: number, 
+        framesInMajorInterval: number,
+        pixelsPerFrame: number
+    ): 'major' | 'minor' | 'major-step' | 'minor-step' => {
+        const halfFrame = Math.floor(framesInMajorInterval / 2)
+        
+        // Major step at halfway point
+        if (frame === halfFrame) {
+            return 'major-step'
+        }
+        
+        // Adapt step intervals based on spacing - fewer subdivisions when very cramped
+        let stepInterval = Math.max(1, Math.floor(framesInMajorInterval / 10)) // Default: 10 steps between major marks
+        
+        // If frames are very close together (< 1px), reduce subdivisions
+        if (pixelsPerFrame < 1) {
+            stepInterval = Math.max(1, Math.floor(framesInMajorInterval / 4)) // Only 4 steps
+        } else if (pixelsPerFrame < 2) {
+            stepInterval = Math.max(1, Math.floor(framesInMajorInterval / 6)) // 6 steps
+        }
+        
+        // Minor step at regular intervals
+        if (frame % stepInterval === 0) {
+            return 'minor-step'
+        }
+        
+        // Show individual frames only if they have reasonable spacing
+        if (pixelsPerFrame >= 2) {
+            return 'minor'
+        }
+        
+        // Skip individual frames when too cramped
+        return 'minor' // Will be filtered out by drawing logic if needed
+    }
+
+    // Draw individual tick marks with different heights, top-aligned (4-level system)
+    const drawTick = (ctx: CanvasRenderingContext2D, x: number, y: number, maxHeight: number, type: 'major' | 'minor' | 'major-step' | 'minor-step') => {
+        // Reserve space for timecode at bottom
+        const timecodeSpace = 16
+        const availableTickHeight = maxHeight - timecodeSpace
+        
+        // 4-level hierarchy: major > major-step > minor-step > minor
+        const heights = {
+            major: availableTickHeight * 0.95,         // Tallest - full height with timecode labels
+            'major-step': availableTickHeight * 0.75,  // 3/4 height - significant subdivisions
+            'minor-step': availableTickHeight * 0.5,   // Half height - regular steps
+            minor: availableTickHeight * 0.25          // Shortest - individual frames
+        }
+        
+        const colors = {
+            major: 'rgba(99, 102, 241, 0.9)',         // Strongest/darkest
+            'major-step': 'rgba(99, 102, 241, 0.7)',  // Medium-strong
+            'minor-step': 'rgba(99, 102, 241, 0.5)',  // Medium
+            minor: 'rgba(99, 102, 241, 0.3)'          // Lightest
+        }
+        
+        const height = heights[type]
+        
+        // Top-aligned ticks
+        ctx.strokeStyle = colors[type]
+        ctx.lineWidth = type === 'major' ? 2 : 1
+        ctx.beginPath()
+        ctx.moveTo(x, y) // Start from top
+        ctx.lineTo(x, y + height) // Draw downward
+        ctx.stroke()
+    }
+
+    // Draw full timecode for major ticks - bottom-aligned with proper spacing
+    const drawTimecode = (ctx: CanvasRenderingContext2D, x: number, maxHeight: number, seconds: number) => {
+        const totalSeconds = Math.floor(seconds)
+        const frames = Math.floor((seconds - totalSeconds) * 30)
+        
+        const hours = Math.floor(totalSeconds / 3600)
+        const minutes = Math.floor((totalSeconds % 3600) / 60)
+        const secs = totalSeconds % 60
+        
+        // Format as HH:MM:SS:FF (frames) - professional timecode format
+        const timecode = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}:${frames.toString().padStart(2, '0')}`
+        
+        // Set text rendering properties for crisp timecode display
+        ctx.fillStyle = 'rgba(99, 102, 241, 0.9)'
+        ctx.font = '10px "Monaco", "Menlo", "Source Code Pro", monospace'
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'bottom'
+        
+        // Add text shadow for better readability
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)'
+        ctx.shadowBlur = 1
+        ctx.shadowOffsetX = 1
+        ctx.shadowOffsetY = 1
+        
+        // Bottom-aligned with 2px padding from bottom
+        ctx.fillText(timecode, x + 4, maxHeight - 2)
+        
+        // Reset shadow
+        ctx.shadowColor = 'transparent'
+        ctx.shadowBlur = 0
+        ctx.shadowOffsetX = 0
+        ctx.shadowOffsetY = 0
     }
     
     const renderTimelineCanvas = () => {
@@ -1345,13 +1544,11 @@ export default function App() {
         const videoTrackHeight = 80
         const audioTrackHeight = 80
         const totalHeight = videoTrackHeight + audioTrackHeight
-        const timecodeHeight = 20
+        const timecodeHeight = 40 // Doubled from 20 to 40
         const topPadding = timecodeHeight
         
-        // Calculate timeline width (always show at least 30 seconds)
-        const minTimelineDuration = 30
-        const actualDuration = capturedFrames.length > 0 ? capturedFrames.length / 30 : minTimelineDuration
-        const timelineDuration = Math.max(minTimelineDuration, actualDuration)
+        // Calculate timeline width using helper function
+        const timelineDuration = calculateTimelineDuration(capturedFrames.length)
         const timelineWidth = timelineDuration * 100 * timelineZoom
         const clipWidth = capturedFrames.length > 0 ? (capturedFrames.length / 30) * 100 * timelineZoom : 0
         
@@ -1413,41 +1610,8 @@ export default function App() {
         const rulerScreenWidth = rulerWorldWidth
         ctx.fillRect(rulerScreenX, 0, rulerScreenWidth, timecodeHeight)
         
-        // Always draw timecode markers (ruler)
-        // Use the timeline duration calculated above
-        const totalDuration = timelineDuration
-        
-        const pixelsPerSecond = 100 * timelineZoom
-        const secondInterval = Math.max(1, Math.floor(1 / timelineZoom))
-        
-        // Calculate visible time range (accounting for scroll offset)
-        const visibleStartSecond = Math.floor(Math.max(0, (viewport.offsetX - trackLabelWidth) / pixelsPerSecond))
-        const visibleEndSecond = Math.ceil(Math.min(totalDuration, (viewport.offsetX + viewport.width - trackLabelWidth) / pixelsPerSecond))
-        
-        ctx.fillStyle = 'rgba(99, 102, 241, 0.6)'
-        ctx.font = '10px monospace'
-        ctx.textAlign = 'left'
-        
-        for (let second = Math.floor(visibleStartSecond / secondInterval) * secondInterval; second <= visibleEndSecond; second += secondInterval) {
-            const worldX = trackLabelWidth + (second * pixelsPerSecond)
-            const screenX = worldX - viewportOffset.x
-            
-            if (screenX >= trackLabelWidth && screenX <= rect.width) {
-                // Draw tick mark
-                ctx.strokeStyle = 'rgba(99, 102, 241, 0.4)'
-                ctx.lineWidth = 1
-                ctx.beginPath()
-                ctx.moveTo(screenX, 0)
-                ctx.lineTo(screenX, timecodeHeight)
-                ctx.stroke()
-                
-                // Draw timecode
-                const minutes = Math.floor(second / 60)
-                const secs = second % 60
-                const timecode = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-                ctx.fillText(timecode, screenX + 4, timecodeHeight - 4)
-            }
-        }
+        // Draw hierarchical ruler system
+        drawHierarchicalRuler(ctx, viewport, trackLabelWidth, timecodeHeight, timelineDuration, timelineZoom, rect.width)
         
         // Draw track labels (always visible)
         ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
@@ -1505,47 +1669,55 @@ export default function App() {
         ctx.fillStyle = 'rgba(99, 102, 241, 0.1)'
         ctx.fillRect(x, y, width, height)
         
-        // Calculate thumbnail dimensions
+        // Step 1: Clip width is already time-accurate (passed as 'width' parameter)
+        // Step 2: Calculate single thumbnail dimensions - height fills clip, maintain aspect ratio
+        const thumbnailHeight = height - 16 // Use all available height
         const videoAspectRatio = 16 / 9
-        const availableHeight = height - 16
-        const thumbnailHeight = availableHeight
-        const thumbnailWidth = thumbnailHeight * videoAspectRatio
+        const thumbnailWidth = thumbnailHeight * videoAspectRatio // Fixed width based on aspect ratio
+        
+        // Step 3: Calculate how many thumbnails we need - let last one overflow
+        const thumbnailCount = Math.ceil(width / thumbnailWidth)
         
         // Calculate visible thumbnail range for performance
         const visibleBounds = viewport.getVisibleBounds(x, width)
         const firstVisibleThumbnailIndex = Math.floor(Math.max(0, (visibleBounds.x - x) / thumbnailWidth))
-        const lastVisibleThumbnailIndex = Math.ceil(Math.min(width / thumbnailWidth, (visibleBounds.x + visibleBounds.width - x) / thumbnailWidth))
+        const lastVisibleThumbnailIndex = Math.min(thumbnailCount - 1, Math.ceil((visibleBounds.x + visibleBounds.width - x) / thumbnailWidth))
         
-        // Only render visible thumbnails
+        // Step 4: Draw thumbnails with NO GAPS, let last one overflow (clip boundary hides overflow)
         for (let i = firstVisibleThumbnailIndex; i <= lastVisibleThumbnailIndex; i++) {
-            const frameIndex = Math.floor((i / Math.ceil(width / thumbnailWidth)) * capturedFrames.length)
+            // Calculate thumbnail position (no gaps between thumbnails)
+            const thumbnailX = x + (i * thumbnailWidth)
+            
+            // Map thumbnail position to frame based on time
+            const progress = capturedFrames.length > 1 ? (thumbnailX - x) / width : 0
+            const frameIndex = Math.min(Math.floor(progress * capturedFrames.length), capturedFrames.length - 1)
             const frame = capturedFrames[frameIndex]
             
             if (frame?.imageBitmap) {
-                const thumbnailX = x + (i * thumbnailWidth)
-                const thumbnailY = y
+                // Always draw full thumbnail width - let canvas clipping handle overflow
+                const drawWidth = thumbnailWidth
                 
                 // Skip if completely outside visible area
-                if (thumbnailX + thumbnailWidth < visibleBounds.x || thumbnailX > visibleBounds.x + visibleBounds.width) {
+                if (thumbnailX + drawWidth < visibleBounds.x || thumbnailX > visibleBounds.x + visibleBounds.width) {
                     continue
                 }
                 
                 // Use cached thumbnail for better performance
                 const cachedThumbnail = getCachedThumbnail(frameIndex, frame, Math.floor(thumbnailWidth), Math.floor(thumbnailHeight))
                 
-                // Calculate clipping for partial thumbnails
+                // Calculate viewport clipping
                 const clipLeft = Math.max(0, visibleBounds.x - thumbnailX)
-                const clipRight = Math.min(thumbnailWidth, visibleBounds.x + visibleBounds.width - thumbnailX)
-                const drawWidth = clipRight - clipLeft
+                const clipRight = Math.min(drawWidth, visibleBounds.x + visibleBounds.width - thumbnailX)
+                const finalDrawWidth = clipRight - clipLeft
                 
-                if (drawWidth > 0) {
+                if (finalDrawWidth > 0) {
                     const sourceClipLeft = (clipLeft / thumbnailWidth) * cachedThumbnail.width
-                    const sourceClipWidth = (drawWidth / thumbnailWidth) * cachedThumbnail.width
+                    const sourceClipWidth = (finalDrawWidth / thumbnailWidth) * cachedThumbnail.width
                     
                     ctx.drawImage(
                         cachedThumbnail,
                         sourceClipLeft, 0, sourceClipWidth, cachedThumbnail.height,
-                        thumbnailX + clipLeft, thumbnailY, drawWidth, thumbnailHeight
+                        thumbnailX + clipLeft, y, finalDrawWidth, thumbnailHeight
                     )
                 }
             }
@@ -1593,40 +1765,48 @@ export default function App() {
         ctx.fillStyle = 'rgba(99, 102, 241, 0.1)'
         ctx.fillRect(visibleStartX, y, visibleWidth, height)
         
-        // Calculate thumbnail dimensions
+        // Step 1: Clip width is already time-accurate (passed as 'width' parameter)
+        // Step 2: Calculate single thumbnail dimensions - height fills clip, maintain aspect ratio
+        const thumbnailHeight = height - 16 // Use all available height
         const videoAspectRatio = 16 / 9
-        const availableHeight = height - 16
-        const thumbnailHeight = availableHeight
-        const thumbnailWidth = thumbnailHeight * videoAspectRatio
+        const thumbnailWidth = thumbnailHeight * videoAspectRatio // Fixed width based on aspect ratio
+        
+        // Step 3: Calculate how many thumbnails we need - let last one overflow
+        const thumbnailCount = Math.ceil(width / thumbnailWidth)
         
         // Calculate which thumbnails are visible
-        const thumbnailsPerClip = Math.ceil(width / thumbnailWidth)
         const firstVisibleIndex = Math.floor(Math.max(0, (visibleStartX - screenX) / thumbnailWidth))
-        const lastVisibleIndex = Math.ceil(Math.min(thumbnailsPerClip, (visibleEndX - screenX) / thumbnailWidth))
+        const lastVisibleIndex = Math.min(thumbnailCount - 1, Math.ceil((visibleEndX - screenX) / thumbnailWidth))
         
-        // Draw visible thumbnails
+        // Step 4: Draw thumbnails with NO GAPS, let last one overflow (clip boundary hides overflow)
         for (let i = firstVisibleIndex; i <= lastVisibleIndex; i++) {
-            const frameIndex = Math.floor((i / thumbnailsPerClip) * capturedFrames.length)
+            // Calculate thumbnail position (no gaps between thumbnails)
+            const thumbnailScreenX = screenX + (i * thumbnailWidth)
+            
+            // Map thumbnail position to frame based on time
+            const progress = capturedFrames.length > 1 ? (thumbnailScreenX - screenX) / width : 0
+            const frameIndex = Math.min(Math.floor(progress * capturedFrames.length), capturedFrames.length - 1)
             const frame = capturedFrames[frameIndex]
             
             if (frame?.imageBitmap) {
-                const thumbnailScreenX = screenX + (i * thumbnailWidth)
+                // Always draw full thumbnail width - let canvas clipping handle overflow
+                const drawWidth = thumbnailWidth
                 
-                if (thumbnailScreenX + thumbnailWidth > visibleStartX && thumbnailScreenX < visibleEndX) {
+                if (thumbnailScreenX + drawWidth > visibleStartX && thumbnailScreenX < visibleEndX) {
                     const cachedThumbnail = getCachedThumbnail(frameIndex, frame, Math.floor(thumbnailWidth), Math.floor(thumbnailHeight))
                     
                     const drawStartX = Math.max(thumbnailScreenX, visibleStartX)
-                    const drawEndX = Math.min(thumbnailScreenX + thumbnailWidth, visibleEndX)
-                    const drawWidth = drawEndX - drawStartX
+                    const drawEndX = Math.min(thumbnailScreenX + drawWidth, visibleEndX)
+                    const finalDrawWidth = drawEndX - drawStartX
                     
-                    if (drawWidth > 0) {
+                    if (finalDrawWidth > 0) {
                         const sourceStartX = (drawStartX - thumbnailScreenX) / thumbnailWidth * cachedThumbnail.width
-                        const sourceWidth = drawWidth / thumbnailWidth * cachedThumbnail.width
+                        const sourceWidth = finalDrawWidth / thumbnailWidth * cachedThumbnail.width
                         
                         ctx.drawImage(
                             cachedThumbnail,
                             sourceStartX, 0, sourceWidth, cachedThumbnail.height,
-                            drawStartX, y, drawWidth, thumbnailHeight
+                            drawStartX, y, finalDrawWidth, thumbnailHeight
                         )
                     }
                 }
@@ -2033,9 +2213,7 @@ export default function App() {
     
     // Scrolled playhead
     const drawPlayheadScrolled = (ctx: CanvasRenderingContext2D, trackLabelWidth: number, totalHeight: number, scrollX: number) => {
-        const minTimelineDuration = 30
-        const actualDuration = capturedFrames.length > 0 ? capturedFrames.length / 30 : minTimelineDuration
-        const timelineDuration = Math.max(minTimelineDuration, actualDuration)
+        const timelineDuration = calculateTimelineDuration(capturedFrames.length)
         drawPlayheadScrolledWithDuration(ctx, trackLabelWidth, totalHeight, scrollX, timelineDuration)
     }
     
@@ -2058,9 +2236,7 @@ export default function App() {
         }
         
         const trackLabelWidth = 64
-        const minTimelineDuration = 30
-        const actualDuration = capturedFrames.length > 0 ? capturedFrames.length / 30 : minTimelineDuration
-        const timelineDuration = Math.max(minTimelineDuration, actualDuration)
+        const timelineDuration = calculateTimelineDuration(capturedFrames.length)
         const timelineWidth = timelineDuration * 100 * timelineZoom
         const contentWidth = trackLabelWidth + timelineWidth
         const maxScrollX = Math.max(0, contentWidth - rect.width)
@@ -2116,9 +2292,7 @@ export default function App() {
             
             const trackLabelWidth = 64
             const timelineX = trackLabelWidth
-            const minTimelineDurationGlobal = 30
-            const actualDurationGlobal = capturedFrames.length > 0 ? capturedFrames.length / 30 : minTimelineDurationGlobal
-            const timelineDurationGlobal = Math.max(minTimelineDurationGlobal, actualDurationGlobal)
+            const timelineDurationGlobal = calculateTimelineDuration(capturedFrames.length)
             const timelineWidthGlobal = timelineDurationGlobal * 100 * timelineZoom
             
             if (isDraggingPlayhead) {
@@ -2183,9 +2357,7 @@ export default function App() {
         const videoTrackHeight = 80
         const topPadding = 20
         const timelineX = trackLabelWidth
-        const minTimelineDurationDown = 30
-        const actualDurationDown = capturedFrames.length > 0 ? capturedFrames.length / 30 : minTimelineDurationDown
-        const timelineDurationDown = Math.max(minTimelineDurationDown, actualDurationDown)
+        const timelineDurationDown = calculateTimelineDuration(capturedFrames.length)
         const timelineWidthDown = timelineDurationDown * 100 * timelineZoom
         
         // Check if clicking on playhead (with expanded tolerance)
@@ -2256,9 +2428,7 @@ export default function App() {
         
         const trackLabelWidth = 64
         const timelineX = trackLabelWidth
-        const minTimelineDurationMove = 30
-        const actualDurationMove = capturedFrames.length > 0 ? capturedFrames.length / 30 : minTimelineDurationMove
-        const timelineDurationMove = Math.max(minTimelineDurationMove, actualDurationMove)
+        const timelineDurationMove = calculateTimelineDuration(capturedFrames.length)
         const timelineWidthMove = timelineDurationMove * 100 * timelineZoom
         
         if (isDraggingPlayhead) {
@@ -2299,9 +2469,7 @@ export default function App() {
         
         const rect = canvas.getBoundingClientRect()
         const trackLabelWidth = 64
-        const minTimelineDurationWheel = 30
-        const actualDurationWheel = capturedFrames.length > 0 ? capturedFrames.length / 30 : minTimelineDurationWheel
-        const timelineDurationWheel = Math.max(minTimelineDurationWheel, actualDurationWheel)
+        const timelineDurationWheel = calculateTimelineDuration(capturedFrames.length)
         const timelineWidthWheel = timelineDurationWheel * 100 * timelineZoom
         const contentWidth = trackLabelWidth + timelineWidthWheel
         const maxScrollX = Math.max(0, contentWidth - rect.width)
@@ -2564,9 +2732,7 @@ export default function App() {
                                         setTimelineZoom(newZoom)
                                         
                                         // Then adjust scroll position with bounds checking
-                                        const minTimelineDurationForZoom = 30
-                                        const actualDurationForZoom = capturedFrames.length > 0 ? capturedFrames.length / 30 : minTimelineDurationForZoom
-                                        const timelineDurationForZoom = Math.max(minTimelineDurationForZoom, actualDurationForZoom)
+                                        const timelineDurationForZoom = calculateTimelineDuration(capturedFrames.length)
                                         const newTimelineWidth = timelineDurationForZoom * newPixelsPerSecond
                                         const maxScrollX = Math.max(0, trackLabelWidth + newTimelineWidth - rect.width)
                                         
@@ -2613,9 +2779,7 @@ export default function App() {
                         }
                         
                         const trackLabelWidth = 64
-                        const minTimelineDurationScrollbar = 30
-                        const actualDurationScrollbar = capturedFrames.length > 0 ? capturedFrames.length / 30 : minTimelineDurationScrollbar
-                        const timelineDurationScrollbar = Math.max(minTimelineDurationScrollbar, actualDurationScrollbar)
+                        const timelineDurationScrollbar = calculateTimelineDuration(capturedFrames.length)
                         const timelineWidthScrollbar = timelineDurationScrollbar * 100 * timelineZoom
                         const contentWidth = trackLabelWidth + timelineWidthScrollbar
                         const maxScrollX = Math.max(0, contentWidth - rect.width)
