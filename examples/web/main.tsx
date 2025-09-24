@@ -101,10 +101,10 @@ export default function App() {
             if (!streamingRef.current || !camera || !connected) return
 
             try {
-                const result = await camera.captureLiveView()
-                if (result?.data && streamingRef.current) {
+                const result = await camera.streamLiveView()
+                if (result && streamingRef.current) {
                     // Decode JPEG binary data directly to ImageBitmap (no URLs!)
-                    const blob = new Blob([new Uint8Array(result.data)], { type: 'image/jpeg' })
+                    const blob = new Blob([new Uint8Array(result)], { type: 'image/jpeg' })
                     const imageBitmap = await createImageBitmap(blob)
                     
                     // Set canvas dimensions to match image

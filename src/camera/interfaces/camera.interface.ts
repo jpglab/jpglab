@@ -69,6 +69,11 @@ export interface CameraInterface {
      * Automatically handles enabling/disabling live view as needed
      */
     captureLiveView(): Promise<{ info: ObjectInfoParsed; data: Uint8Array } | null>
+
+    /**
+     * Stream a live view frame
+     */
+    streamLiveView(): Promise<Uint8Array>
 }
 
 /**

@@ -14,6 +14,8 @@ const SONY_CAPTURED_IMAGE_OBJECT_HANDLE = 0xffffc001
 const SONY_LIVE_VIEW_OBJECT_HANDLE = 0xffffc002
 
 export class SonyCamera extends GenericPTPCamera {
+    private liveViewEnabled = false
+
     constructor(
         protocol: ProtocolInterface,
         private readonly authenticator: SonyAuthenticator
@@ -166,8 +168,10 @@ export class SonyCamera extends GenericPTPCamera {
     }
 
     async captureLiveView(): Promise<{ info: ObjectInfoParsed; data: Uint8Array } | null> {
-        // Start live view if not already active
-        await this.setDeviceProperty('SET_LIVE_VIEW_ENABLE', 'ENABLE')
+        if (!this.liveViewEnabled) {
+            await this.setDeviceProperty('SET_LIVE_VIEW_ENABLE', 'ENABLE')
+            this.liveViewEnabled = true
+        }
 
         // Add delay to allow live view to initialize
         await new Promise(resolve => setTimeout(resolve, 500))
@@ -204,5 +208,23 @@ export class SonyCamera extends GenericPTPCamera {
                   data: liveViewData.liveViewImage,
               }
             : null
+    }
+
+    async streamLiveView(): Promise<Uint8Array> {
+        if (!this.liveViewEnabled) {
+            await this.setDeviceProperty('SET_LIVE_VIEW_ENABLE', 'ENABLE')
+            this.liveViewEnabled = true
+        }
+
+        const response = await this.protocol.sendOperation({
+            ...SonyOperations.GET_OBJECT,
+            parameters: [SONY_LIVE_VIEW_OBJECT_HANDLE],
+            maxDataLength: 512 * 1024, // 512KB
+        })
+
+        // Parse Sony's live view format
+        const liveViewData = parseLiveViewDataset(response.data!)
+
+        return liveViewData.liveViewImage || new Uint8Array()
     }
 }
