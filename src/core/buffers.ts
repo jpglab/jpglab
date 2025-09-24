@@ -65,12 +65,22 @@ export function encodePTPValue(value: any, dataType: DataTypeValue): Uint8Array 
       view.setInt32(0, value, true)
       return new Uint8Array(buffer, 0, 4)
     case DataType.STRING:
-      const encoder = new TextEncoder()
-      const utf8 = encoder.encode(value)
-      const result = new Uint8Array(2 + utf8.length)
-      result[0] = utf8.length
-      result[1] = 0
-      result.set(utf8, 2)
+      // PTP strings: UINT8 character count + UTF-16LE characters + null terminator
+      const strValue = String(value)
+      const numChars = strValue.length + 1 // Include null terminator in count
+      const result = new Uint8Array(1 + numChars * 2)
+      const resultView = new DataView(result.buffer)
+      
+      // Write character count (including null terminator)
+      resultView.setUint8(0, numChars)
+      
+      // Write UTF-16LE characters
+      for (let i = 0; i < strValue.length; i++) {
+        resultView.setUint16(1 + i * 2, strValue.charCodeAt(i), true)
+      }
+      // Write null terminator
+      resultView.setUint16(1 + strValue.length * 2, 0, true)
+      
       return result
     default:
       return new Uint8Array()
@@ -99,9 +109,18 @@ export function decodePTPValue(data: Uint8Array, dataType: DataTypeValue): any {
     case DataType.INT32:
       return view.getInt32(0, true)
     case DataType.STRING:
-      const length = view.getUint16(0, true)
-      const decoder = new TextDecoder()
-      return decoder.decode(sliceBuffer(data, 2, 2 + length))
+      // PTP strings use UINT8 for character count, followed by UTF-16LE characters
+      const numChars = view.getUint8(0)
+      // Each character is 2 bytes (UTF-16LE)
+      let result = ''
+      for (let i = 0; i < numChars; i++) {
+        const charCode = view.getUint16(1 + i * 2, true)
+        // Skip null terminators
+        if (charCode !== 0) {
+          result += String.fromCharCode(charCode)
+        }
+      }
+      return result
     default:
       return data
   }
@@ -209,10 +228,12 @@ export function getPTPValueSize(dataType: DataTypeValue, data?: Uint8Array): num
     case DataType.INT64:
       return 8
     case DataType.STRING:
-      if (!data || data.length < 2) return 0
+      if (!data || data.length < 1) return 0
       const view = createDataView(data)
-      const length = view.getUint16(0, true)
-      return 2 + length
+      // PTP strings use UINT8 for character count
+      const numChars = view.getUint8(0)
+      // 1 byte for count + 2 bytes per character (UTF-16LE)
+      return 1 + (numChars * 2)
     default:
       return 0
   }

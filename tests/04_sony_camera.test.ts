@@ -56,7 +56,7 @@ describe('SonyCamera', () => {
         // Create camera with authenticator
         const authenticator = new SonyAuthenticator()
         camera = new SonyCamera(protocol, authenticator)
-        
+
         // Connect the camera once for all tests
         try {
             await camera.connect()
@@ -132,27 +132,26 @@ describe('SonyCamera', () => {
     })
 
     it('should capture a photo', async () => {
-        await camera.captureImage()
-        console.log('✅ Photo captured')
-
-        // Note: In the simplified API, image download is handled separately
-        // The captureImage just triggers the capture
-        console.log('  (Photo saved to camera storage)')
+        const result = await camera.captureImage()
+        
+        expect(result).toBeDefined()
+        expect(result?.data).toBeInstanceOf(Uint8Array)
+        expect(result?.info.filename).toBeDefined()
+        
+        const photoPath = path.join(outputDir, result!.info.filename)
+        fs.writeFileSync(photoPath, result!.data)
+        console.log(`💾 PHOTO SAVED TO: ${photoPath}`)
     })
 
-    it('should capture a live view frame', async () => {
-        const frame = await camera.captureLiveView()
-
-        if (frame) {
-            const liveViewPath = path.join(outputDir, `liveview_${Date.now()}.jpg`)
-            fs.writeFileSync(liveViewPath, frame)
-            console.log(`💾 LIVE VIEW SAVED TO: ${liveViewPath}`)
-            expect(frame).toBeInstanceOf(Uint8Array)
-        } else {
-            console.log('⚠️ Live view frame not available (camera may not support it or not be ready)')
-            // This is acceptable - camera may not support live view or not be ready
-            expect(frame).toBeNull()
-        }
+    it('should capture a live view image', async () => {
+        const result = await camera.captureLiveView()
+        
+        expect(result).toBeDefined()
+        expect(result?.data).toBeInstanceOf(Uint8Array)
+        
+        const liveViewPath = path.join(outputDir, `liveview_${Date.now()}.jpg`)
+        fs.writeFileSync(liveViewPath, result!.data)
+        console.log(`💾 LIVE VIEW SAVED TO: ${liveViewPath}`)
     })
 
     it('should handle multiple operations in sequence', async () => {

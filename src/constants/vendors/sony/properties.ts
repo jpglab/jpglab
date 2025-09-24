@@ -281,7 +281,7 @@ export const SonyProperties = {
 
     STILL_IMAGE_SAVE_DESTINATION: {
         name: 'STILL_IMAGE_SAVE_DESTINATION',
-        code: 0xd222,
+        code: 0xD222,
         type: DataType.UINT8,
         description: 'Get the information of still image save destination.',
         writable: true,

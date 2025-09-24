@@ -5,9 +5,9 @@ import { TransportType } from '@transport/interfaces/transport-types'
 import { DeviceDescriptor } from '@transport/interfaces/device.interface'
 import { listCameras } from '@api/discovery'
 import { Photo } from '@api/photo'
-import { Frame } from '@api/frame'
 import { toBuffer } from '@core/buffers'
 import { ProtocolInterface } from '@core/protocol'
+import { ObjectInfoParsed } from '@camera/generic/object-info-dataset'
 
 /**
  * High-level Camera API - simplified wrapper around GenericPTPCamera
@@ -133,17 +133,13 @@ export class Camera {
         return this.cameraImplementation.getCameraInfo()
     }
 
-    async captureImage(): Promise<Uint8Array | null> {
+    async captureImage(): Promise<{ info: ObjectInfoParsed; data: Uint8Array } | null> {
         if (!this.cameraImplementation) throw new Error('Camera not connected')
         return this.cameraImplementation.captureImage()
     }
 
     async captureLiveView() {
-        if (!this.cameraImplementation) throw new Error('Camera not connected')
-        const frame = await this.cameraImplementation.captureLiveView()
-        if (frame) {
-            return new Frame(toBuffer(frame.data), frame.width, frame.height, frame.timestamp)
-        }
+        // TODO
         return null
     }
 

@@ -3,10 +3,12 @@ import { GenericPTPCamera } from '@camera/generic/generic-ptp-camera'
 import { SonyAuthenticator } from '@camera/vendors/sony/authenticator'
 import { SonyOperations } from '@constants/vendors/sony/operations'
 import { SonyProperties } from '@constants/vendors/sony/properties'
+import { SonyFormats } from '@constants/vendors/sony/formats'
 import { PTPResponses } from '@constants/ptp/responses'
 import { encodePTPValue } from '@core/buffers'
 import { parseSDIExtDevicePropInfo } from '@camera/vendors/sony/sdi-ext-device-prop-info-dataset'
 import { parseLiveViewDataset } from '@camera/vendors/sony/sony-live-view-dataset'
+import { ObjectInfoParsed, parseObjectInfo } from '@camera/generic/object-info-dataset'
 
 const SONY_CAPTURED_IMAGE_OBJECT_HANDLE = 0xffffc001
 const SONY_LIVE_VIEW_OBJECT_HANDLE = 0xffffc002
@@ -39,6 +41,8 @@ export class SonyCamera extends GenericPTPCamera {
         if (response.code !== PTPResponses.OK.code) {
             console.warn('Failed to set Sony control mode, some features may not work')
         }
+
+        await this.setDeviceProperty('STILL_IMAGE_SAVE_DESTINATION', 'CAMERA_DEVICE')
     }
 
     async disconnect(): Promise<void> {
@@ -114,56 +118,73 @@ export class SonyCamera extends GenericPTPCamera {
     /**
      * Capture an image using Sony's control properties
      */
-    async captureImage(): Promise<Uint8Array | null> {
+    async captureImage(): Promise<{ info: ObjectInfoParsed; data: Uint8Array } | null> {
         await this.setDeviceProperty('SHUTTER_HALF_RELEASE_BUTTON', 'DOWN')
         await new Promise(resolve => setTimeout(resolve, 250))
         await this.setDeviceProperty('SHUTTER_RELEASE_BUTTON', 'DOWN')
         await this.setDeviceProperty('SHUTTER_RELEASE_BUTTON', 'UP')
         await this.setDeviceProperty('SHUTTER_HALF_RELEASE_BUTTON', 'UP')
 
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
+        const objectInfo = await this.protocol.sendOperation({
+            ...SonyOperations.GET_OBJECT_INFO,
+            parameters: [SONY_CAPTURED_IMAGE_OBJECT_HANDLE],
+        })
+
+        const objectInfoParsed = parseObjectInfo(objectInfo.data!)
+        const objectCompressedSize = objectInfoParsed.objectCompressedSize
+
         const response = await this.protocol.sendOperation({
             ...SonyOperations.GET_OBJECT,
             parameters: [SONY_CAPTURED_IMAGE_OBJECT_HANDLE],
-            maxDataLength: 10 * 1024 * 1024, // 10MB
+            maxDataLength: objectCompressedSize + 1024, // Add buffer
         })
 
-        return response.data || null
+        return response.data
+            ? {
+                  info: objectInfoParsed,
+                  data: response.data,
+              }
+            : null
     }
 
-    async captureLiveView(): Promise<Uint8Array | null> {
+    async captureLiveView(): Promise<{ info: ObjectInfoParsed; data: Uint8Array } | null> {
         // Start live view if not already active
         await this.setDeviceProperty('SET_LIVE_VIEW_ENABLE', 'ENABLE')
 
         // Add delay to allow live view to initialize
         await new Promise(resolve => setTimeout(resolve, 500))
 
+        const objectInfo = await this.protocol.sendOperation({
+            ...SonyOperations.GET_OBJECT_INFO,
+            parameters: [SONY_LIVE_VIEW_OBJECT_HANDLE],
+        })
+
+        const objectInfoParsed = parseObjectInfo(objectInfo.data!)
+        const objectCompressedSize = objectInfoParsed.objectCompressedSize
+        const objectFormat = objectInfoParsed.objectFormat
+        const sonyFormatInfo = Object.values(SonyFormats).find(f => f.code === objectFormat)
+
         const response = await this.protocol.sendOperation({
             ...SonyOperations.GET_OBJECT,
             parameters: [SONY_LIVE_VIEW_OBJECT_HANDLE],
-            maxDataLength: 512 * 1024, // 512KB for live view
+            maxDataLength: objectCompressedSize + 1024, // Add buffer
         })
 
-        // Handle ACCESS_DENIED gracefully - camera may not be ready or doesn't support live view
-        if (response.code === PTPResponses.ACCESS_DENIED.code) {
-            console.log('Live view not available (camera may not support it or not be ready)')
-            return null
-        }
-
-        if (response.code !== PTPResponses.OK.code) {
-            console.log(`Live view response: 0x${response.code.toString(16)}`)
-            return null
-        }
-
-        if (!response.data) {
-            return null
-        }
-
         // Parse Sony's live view format
-        const jpegData = parseLiveViewDataset(response.data)
-        if (!jpegData) {
-            return null
-        }
+        const liveViewData = parseLiveViewDataset(response.data!)
 
-        return jpegData.liveViewImage
+        return liveViewData.liveViewImage
+            ? {
+                  info: {
+                      ...objectInfoParsed,
+                      objectFormat: sonyFormatInfo?.code || objectFormat,
+                      objectFormatName: sonyFormatInfo?.name || 'Unknown',
+                      objectFormatDescription: sonyFormatInfo?.description || 'Unknown',
+                  },
+                  data: liveViewData.liveViewImage,
+              }
+            : null
     }
 }

@@ -1,5 +1,6 @@
 import { TransportOptions } from '@transport/interfaces/transport-types'
 import { ProtocolInterface } from '@core/protocol'
+import { ObjectInfo, ObjectInfoParsed } from '@camera/generic/object-info-dataset'
 
 /**
  * Camera connection options
@@ -26,71 +27,71 @@ export interface CameraOptions extends TransportOptions {
  * Core operations only
  */
 export interface CameraInterface {
-  /**
-   * Connect to the camera
-   */
-  connect(): Promise<void>
+    /**
+     * Connect to the camera
+     */
+    connect(): Promise<void>
 
-  /**
-   * Disconnect from the camera
-   */
-  disconnect(): Promise<void>
+    /**
+     * Disconnect from the camera
+     */
+    disconnect(): Promise<void>
 
-  /**
-   * Check if connected
-   */
-  isConnected(): boolean
+    /**
+     * Check if connected
+     */
+    isConnected(): boolean
 
-  /**
-   * Capture a still image
-   */
-  captureImage(): Promise<Uint8Array | null>
+    /**
+     * Capture a still image
+     */
+    captureImage(): Promise<{ info: ObjectInfoParsed; data: Uint8Array } | null>
 
-  /**
-   * Get a device property value by name (type-safe with constants)
-   * @param propertyName - Name of the property from constants
-   */
-  getDeviceProperty<T = any>(propertyName: string): Promise<T>
+    /**
+     * Get a device property value by name (type-safe with constants)
+     * @param propertyName - Name of the property from constants
+     */
+    getDeviceProperty<T = any>(propertyName: string): Promise<T>
 
-  /**
-   * Set a device property value by name (type-safe with constants)
-   * @param propertyName - Name of the property from constants
-   * @param value - Value to set
-   */
-  setDeviceProperty(propertyName: string, value: any): Promise<void>
+    /**
+     * Set a device property value by name (type-safe with constants)
+     * @param propertyName - Name of the property from constants
+     * @param value - Value to set
+     */
+    setDeviceProperty(propertyName: string, value: any): Promise<void>
 
-  /**
-   * Get camera information
-   */
-  getCameraInfo(): Promise<CameraInfo>
+    /**
+     * Get camera information
+     */
+    getCameraInfo(): Promise<CameraInfo>
 
-  /**
-   * Capture a live view frame
-   * Automatically handles enabling/disabling live view as needed
-   */
-  captureLiveView(): Promise<any>
+    /**
+     * Capture a live view frame
+     * Automatically handles enabling/disabling live view as needed
+     */
+    captureLiveView(): Promise<{ info: ObjectInfoParsed; data: Uint8Array } | null>
 
-  getProtocol(): ProtocolInterface
+    getProtocol(): ProtocolInterface
 }
 
 /**
  * Camera information
  */
 export interface CameraInfo {
-  manufacturer: string
-  model: string
-  serialNumber: string
-  firmwareVersion: string
-  batteryLevel: number
+    manufacturer: string
+    model: string
+    serialNumber: string
+    firmwareVersion: string
+    batteryLevel: number
 }
 
 /**
  * Storage information
  */
 export interface StorageInfo {
-  id: string
-  name: string
-  type: number
-  totalSpace: number
-  freeSpace: number
+    id: string
+    name: string
+    type: number
+    totalSpace: number
+    freeSpace: number
 }
