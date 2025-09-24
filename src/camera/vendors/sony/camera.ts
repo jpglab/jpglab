@@ -86,6 +86,18 @@ export class SonyCamera extends GenericPTPCamera {
             return decoded
         }
 
+        // If property has enum, try to decode using it
+        if ('enum' in property && property.enum) {
+            const rawValue = value.currentValueRaw
+            // Find the enum key that matches this value
+            const enumEntry = Object.entries(property.enum).find(([_, enumValue]) => enumValue === rawValue)
+            if (enumEntry) {
+                const [enumKey] = enumEntry
+                console.log(`  Decoded ${propertyName} enum value 0x${rawValue.toString(16)} to: "${enumKey}"`)
+                return enumKey as T
+            }
+        }
+
         return value.currentValueRaw as T
     }
 

@@ -43,15 +43,20 @@ export default function App() {
     const [cameraInfo, setCameraInfo] = useState<CameraInfo | null>(null)
     const [streaming, setStreaming] = useState(false)
     const [fps, setFps] = useState(0)
+    const [resolution, setResolution] = useState<{
+        source: { width: number; height: number }
+        canvas: { width: number; height: number }
+    } | null>(null)
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const streamingRef = useRef(false)
     const animationFrameRef = useRef<number | null>(null)
     const frameTimestamps = useRef<number[]>([])
     const lastFpsUpdate = useRef(0)
-    const [exposureSettings, setExposureSettings] = useState<{
+    const [settings, setSettings] = useState<{
         aperture: string
         shutterSpeed: string
         iso: string
+        liveViewImageQuality: string
     } | null>(null)
 
     useEffect(() => {
@@ -109,7 +114,13 @@ export default function App() {
                 const exposureSettings = await camera.getDeviceProperty('APERTURE')
                 const shutterSpeed = await camera.getDeviceProperty('SHUTTER_SPEED')
                 const iso = await camera.getDeviceProperty('ISO')
-                setExposureSettings({ aperture: exposureSettings, shutterSpeed: shutterSpeed, iso: iso })
+                const liveViewImageQuality = await camera.getDeviceProperty('LIVE_VIEW_IMAGE_QUALITY')
+                setSettings({
+                    aperture: exposureSettings,
+                    shutterSpeed: shutterSpeed,
+                    iso: iso,
+                    liveViewImageQuality: liveViewImageQuality,
+                })
 
                 const result = await camera.streamLiveView()
                 if (result && streamingRef.current) {
@@ -120,6 +131,12 @@ export default function App() {
                     // Set canvas dimensions to match image
                     canvas.width = imageBitmap.width
                     canvas.height = imageBitmap.height
+
+                    // Update resolution state
+                    setResolution({
+                        source: { width: imageBitmap.width, height: imageBitmap.height },
+                        canvas: { width: canvas.width, height: canvas.height },
+                    })
 
                     // Draw ImageBitmap directly to canvas
                     ctx.drawImage(imageBitmap, 0, 0)
@@ -185,10 +202,23 @@ export default function App() {
             cancelAnimationFrame(animationFrameRef.current)
             animationFrameRef.current = null
         }
-        // Reset FPS tracking
+        // Reset FPS tracking and resolution
         setFps(0)
+        setResolution(null)
         frameTimestamps.current = []
         lastFpsUpdate.current = 0
+    }
+
+    const onToggleLiveViewImageQuality = async () => {
+        if (!settings) {
+            console.error('No settings found')
+            return
+        }
+        const newSetting = settings?.liveViewImageQuality === 'HIGH' ? 'LOW' : 'HIGH'
+        console.log('Toggling live view image quality to', newSetting)
+        await camera?.setDeviceProperty('LIVE_VIEW_IMAGE_QUALITY', newSetting)
+        console.log('Set live view image quality to', newSetting)
+        setSettings({ ...settings, liveViewImageQuality: newSetting })
     }
 
     return (
@@ -219,26 +249,46 @@ export default function App() {
                             </div>
                         )}
 
-                        {/* FPS meter in top left */}
-                        {streaming && fps > 0 && (
-                            <div className="absolute top-2 left-2 px-2 py-1 bg-black/70 rounded text-primary/30 text-xs font-mono">
-                                <span
-                                    style={{
-                                        color: fps > 24 ? '#4ade8088' : fps > 15 ? '#facc1588' : '#f8717188',
-                                    }}
+                        <div className="absolute top-2 left-2 flex flex-row gap-4">
+                            {/* FPS meter in top left */}
+                            {streaming && fps > 0 && (
+                                <div className="px-2 py-1 bg-black/70 rounded text-primary/30 text-xs font-mono">
+                                    <span
+                                        style={{
+                                            color: fps > 24 ? '#4ade8088' : fps > 15 ? '#facc1588' : '#f87171',
+                                        }}
+                                    >
+                                        {fps}
+                                    </span>{' '}
+                                    FPS
+                                </div>
+                            )}
+
+                            {/* Resolution display */}
+                            {streaming && resolution && (
+                                <div className="px-2 py-1 bg-black/70 rounded text-primary/30 text-xs font-mono">
+                                    {resolution.source.width}×{resolution.source.height} → {resolution.canvas.width}×
+                                    {resolution.canvas.height}
+                                </div>
+                            )}
+
+                            {/* Live view image quality display */}
+                            {streaming && settings && (
+                                <div
+                                    className="px-2 py-1 bg-black/70 rounded text-primary/30 text-xs font-mono cursor-pointer select-none"
+                                    onClick={onToggleLiveViewImageQuality}
                                 >
-                                    {fps}
-                                </span>{' '}
-                                FPS
-                            </div>
-                        )}
+                                    {settings?.liveViewImageQuality === 'HIGH' ? 'HQ' : 'LQ'}
+                                </div>
+                            )}
+                        </div>
 
                         {/* Exposure settings in top right */}
-                        {streaming && exposureSettings && (
+                        {streaming && settings && (
                             <div className="absolute top-2 right-2 px-2 py-1 bg-black/70 rounded text-primary/30 text-xs font-mono flex flex-row gap-4">
-                                <span>{exposureSettings.aperture}</span>
-                                <span>{exposureSettings.shutterSpeed}</span>
-                                <span>{exposureSettings.iso}</span>
+                                <span>{settings.aperture}</span>
+                                <span>{settings.shutterSpeed}</span>
+                                <span>{settings.iso}</span>
                             </div>
                         )}
 

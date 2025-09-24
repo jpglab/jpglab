@@ -360,6 +360,18 @@ export const SonyProperties = {
             DOWN: 0x0002,
         },
     },
+
+    LIVE_VIEW_IMAGE_QUALITY: {
+        name: 'LIVE_VIEW_IMAGE_QUALITY',
+        code: 0xd26a,
+        type: DataType.UINT8,
+        description: 'Get/Set the live view image quality.',
+        writable: true,
+        enum: {
+            LOW: 0x01,
+            HIGH: 0x02,
+        },
+    },
 } as const satisfies PropertyDefinition<any>
 
 export type SonyPropertyDefinitions = typeof SonyProperties
