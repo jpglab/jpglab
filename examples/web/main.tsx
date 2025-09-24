@@ -38,72 +38,6 @@ interface AudioSample {
     audioBuffer: AudioBuffer
 }
 
-const useConsoleCapture = (enabled: boolean) => {
-    const [messages, setMessages] = useState<ConsoleMessage[]>([])
-
-    useEffect(() => {
-        if (!enabled) {
-            setMessages([])
-            return
-        }
-
-        // Store original console methods
-        const originalLog = console.log
-        const originalWarn = console.warn
-        const originalError = console.error
-        const originalInfo = console.info
-
-        const captureMessage = (type: ConsoleMessage['type'], args: any[]) => {
-            // Call original console method
-            const original =
-                type === 'log'
-                    ? originalLog
-                    : type === 'warn'
-                      ? originalWarn
-                      : type === 'error'
-                        ? originalError
-                        : originalInfo
-            original.apply(console, args)
-
-            // Capture and format message
-            const message = args
-                .map(arg => {
-                    if (typeof arg === 'object') {
-                        try {
-                            return JSON.stringify(arg, null, 2)
-                        } catch {
-                            return String(arg)
-                        }
-                    }
-                    return String(arg)
-                })
-                .join(' ')
-
-            setMessages(prev => {
-                // If we're at 10 messages, remove the oldest one before adding new
-                const newMessages = prev.length >= 10 ? prev.slice(1) : prev
-                return [...newMessages, { type, message, timestamp: Date.now() }]
-            })
-        }
-
-        // Override console methods
-        console.log = (...args) => captureMessage('log', args)
-        console.warn = (...args) => captureMessage('warn', args)
-        console.error = (...args) => captureMessage('error', args)
-        console.info = (...args) => captureMessage('info', args)
-
-        // Restore on unmount
-        return () => {
-            console.log = originalLog
-            console.warn = originalWarn
-            console.error = originalError
-            console.info = originalInfo
-        }
-    }, [enabled])
-
-    return messages
-}
-
 const useCamera = () => {
     const [camera, setCamera] = useState<Camera | null>(null)
     const cameraRef = useRef<Camera | null>(null)
@@ -156,8 +90,6 @@ const Button = ({ children, className = '', ...props }: ButtonHTMLAttributes<HTM
 
 export default function App() {
     const camera = useCamera()
-    const [showConsole, setShowConsole] = useState(false)
-    const consoleMessages = useConsoleCapture(showConsole)
     const [connected, setConnected] = useState(false)
     const [cameraInfo, setCameraInfo] = useState<CameraInfo | null>(null)
     const [streaming, setStreaming] = useState(false)
@@ -228,13 +160,6 @@ export default function App() {
 
         initAudio()
     }, [])
-
-    // Auto-scroll terminal to bottom when new messages arrive
-    useEffect(() => {
-        if (terminalRef.current) {
-            terminalRef.current.scrollTop = terminalRef.current.scrollHeight
-        }
-    }, [consoleMessages])
 
     // Cleanup on unmount
     useEffect(() => {
@@ -842,15 +767,6 @@ export default function App() {
         <div className="flex flex-col items-center justify-center min-h-screen gap-6 p-4">
             <div className="flex flex-row items-center justify-center gap-4 flex-wrap">
                 <Button onClick={connected ? onDisconnect : onConnect}>{connected ? 'Disconnect' : 'Connect'}</Button>
-                <label className="flex items-center gap-2 text-sm">
-                    <input
-                        type="checkbox"
-                        checked={showConsole}
-                        onChange={e => setShowConsole(e.target.checked)}
-                        className="w-4 h-4"
-                    />
-                    Display Console
-                </label>
                 {audioDevices.length > 0 && (
                     <label className="flex items-center gap-2 text-sm">
                         <span>Audio Device:</span>
@@ -1080,40 +996,6 @@ export default function App() {
                 />
                 
             </div>
-
-            {/* Terminal-like console output */}
-            {showConsole && (
-                <div className="w-full max-w-[80vw] border border-primary/10 rounded-md bg-black/90 p-2">
-                    <div
-                        ref={terminalRef}
-                        className="h-48 overflow-y-auto font-mono text-xs text-green-400/80"
-                        style={{ scrollBehavior: 'smooth' }}
-                    >
-                        {consoleMessages.map((msg, index) => (
-                            <div
-                                key={`${msg.timestamp}-${index}`}
-                                className="whitespace-pre-wrap break-words mb-1"
-                                style={{
-                                    color:
-                                        msg.type === 'error'
-                                            ? '#ef4444'
-                                            : msg.type === 'warn'
-                                              ? '#f59e0b'
-                                              : msg.type === 'info'
-                                                ? '#3b82f6'
-                                                : '#4ade80cc',
-                                }}
-                            >
-                                <span className="opacity-50">[{new Date(msg.timestamp).toLocaleTimeString()}]</span>{' '}
-                                {msg.message}
-                            </div>
-                        ))}
-                        {consoleMessages.length === 0 && (
-                            <div className="text-primary/30">Console output will appear here...</div>
-                        )}
-                    </div>
-                </div>
-            )}
         </div>
     )
 }

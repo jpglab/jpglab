@@ -125,11 +125,9 @@ export const PixiTimeline: React.FC<PixiTimelineProps> = ({
         clipTrimStart: -1, 
         clipTrimEnd: -1, 
         timelineZoom: -1, 
-        viewportX: -1,
         offsetX: -1,
-        isRecording: false,
-        realtimeAudioDataLength: 0,
-        capturedAudioLength: 0
+        screenWidth: 0,
+        screenHeight: 0
     })
     
     // Caches
@@ -175,29 +173,31 @@ export const PixiTimeline: React.FC<PixiTimelineProps> = ({
             clipTrimStart,
             clipTrimEnd,
             timelineZoom,
-            offsetX: Math.round(viewportOffset.x), // Round to avoid tiny differences
+            offsetX: viewportOffset.x,
             screenWidth: rect.width,
             screenHeight: rect.height
         }
         
-        const paramsChanged = Object.keys(currentParams).some(key => 
-            lastRenderParams.current[key as keyof typeof currentParams] !== currentParams[key as keyof typeof currentParams]
-        )
+        // Custom comparison with tolerance for offsetX to prevent micro-scroll re-renders
+        const OFFSET_TOLERANCE = 2 // pixels - only re-render if offset changes by more than this
+        const paramsChanged = Object.keys(currentParams).some(key => {
+            const current = currentParams[key as keyof typeof currentParams]
+            const last = lastRenderParams.current[key as keyof typeof currentParams]
+            
+            // Special handling for offsetX with tolerance
+            if (key === 'offsetX') {
+                return Math.abs(current - last) > OFFSET_TOLERANCE
+            }
+            
+            // Standard comparison for other parameters
+            return current !== last
+        })
         
         // Skip render if nothing changed
         if (!paramsChanged) {
             return
         }
         
-        // Debug why cache failed (only log when actually rendering)
-        if (paramsChanged) {
-            const changedParams = Object.keys(currentParams).filter(key => 
-                lastRenderParams.current[key as keyof typeof currentParams] !== currentParams[key as keyof typeof currentParams]
-            )
-            if (changedParams.length > 0) {
-                console.log('Cache miss - changed params:', changedParams)
-            }
-        }
         
         lastRenderParams.current = currentParams
         
@@ -245,21 +245,22 @@ export const PixiTimeline: React.FC<PixiTimelineProps> = ({
         const visibleStartSecond = Math.max(0, (viewport.offsetX - TRACK_LABEL_WIDTH) / pixelsPerSecond)
         const visibleEndSecond = Math.min(timelineDuration, (viewport.offsetX + rect.width - TRACK_LABEL_WIDTH) / pixelsPerSecond)
         
-        const firstMajorTick = Math.floor(visibleStartSecond / majorIntervalSeconds) * majorIntervalSeconds
+        // Always start from the beginning of the timeline to ensure complete ruler coverage
+        const firstMajorTick = 0
         
         const rulerGraphics = new Graphics()
         
-        for (let majorSecond = firstMajorTick; majorSecond <= visibleEndSecond + majorIntervalSeconds; majorSecond += majorIntervalSeconds) {
+        for (let majorSecond = firstMajorTick; majorSecond <= timelineDuration; majorSecond += majorIntervalSeconds) {
             const majorWorldX = TRACK_LABEL_WIDTH + (majorSecond * pixelsPerSecond)
             const majorScreenX = majorWorldX - viewport.offsetX
             
-            if (majorScreenX >= TRACK_LABEL_WIDTH - 50 && majorScreenX <= rect.width + 50) {
-                // Major tick - full height
-                rulerGraphics.moveTo(majorScreenX, 0)
-                rulerGraphics.lineTo(majorScreenX, TIMECODE_HEIGHT - 2)
-                rulerGraphics.stroke({ color: 0x6366f1, alpha: 0.9, width: 2 })
-                
-                // Timecode text
+            // Major tick - top aligned, 1px width (always render)
+            rulerGraphics.moveTo(majorScreenX, 0)
+            rulerGraphics.lineTo(majorScreenX, 16)
+            rulerGraphics.stroke({ color: 0x6366f1, alpha: 0.9, width: 1 })
+            
+            // Only render timecode text if visible on screen
+            if (majorScreenX >= -50 && majorScreenX <= rect.width + 50) {
                 const totalSeconds = Math.floor(majorSecond)
                 const frames = Math.floor((majorSecond - totalSeconds) * 30)
                 const hours = Math.floor(totalSeconds / 3600)
@@ -280,32 +281,30 @@ export const PixiTimeline: React.FC<PixiTimelineProps> = ({
                 timecodeText.x = majorScreenX + 4
                 timecodeText.y = TIMECODE_HEIGHT - 12
                 mainContainer.addChild(timecodeText)
+            }
+            
+            // Draw exactly fps (30) subdivisions between each major tick
+            const frameInterval = majorIntervalSeconds / fps // seconds per frame subdivision
+            for (let frame = 1; frame < fps; frame++) {
+                const frameTime = majorSecond + (frame * frameInterval)
+                const frameWorldX = TRACK_LABEL_WIDTH + (frameTime * pixelsPerSecond)
+                const frameScreenX = frameWorldX - viewport.offsetX
                 
-                // Draw exactly fps (30) subdivisions between each major tick
-                const frameInterval = majorIntervalSeconds / fps // seconds per frame subdivision
-                for (let frame = 1; frame < fps; frame++) {
-                    const frameTime = majorSecond + (frame * frameInterval)
-                    const frameWorldX = TRACK_LABEL_WIDTH + (frameTime * pixelsPerSecond)
-                    const frameScreenX = frameWorldX - viewport.offsetX
-                    
-                    if (frameScreenX >= TRACK_LABEL_WIDTH && frameScreenX <= rect.width) {
-                        let tickHeight, alpha
-                        
-                        if (frame === fps / 2) {
-                            // Minor tick at halfway point - 3/4 height
-                            tickHeight = (TIMECODE_HEIGHT - 2) * 0.75
-                            alpha = 0.6
-                        } else {
-                            // Small alternating ticks - 1/2 height
-                            tickHeight = (TIMECODE_HEIGHT - 2) * 0.5
-                            alpha = 0.4
-                        }
-                        
-                        rulerGraphics.moveTo(frameScreenX, 0)
-                        rulerGraphics.lineTo(frameScreenX, tickHeight)
-                        rulerGraphics.stroke({ color: 0x6366f1, alpha, width: 1 })
-                    }
+                let tickHeight, alpha
+                
+                if (frame === fps / 2) {
+                    // Minor tick at halfway point - top aligned
+                    tickHeight = 10
+                    alpha = 0.6
+                } else {
+                    // Small alternating ticks - top aligned
+                    tickHeight = 6
+                    alpha = 0.4
                 }
+                
+                rulerGraphics.moveTo(frameScreenX, 0)
+                rulerGraphics.lineTo(frameScreenX, tickHeight)
+                rulerGraphics.stroke({ color: 0x6366f1, alpha, width: 1 })
             }
         }
         
@@ -386,14 +385,21 @@ export const PixiTimeline: React.FC<PixiTimelineProps> = ({
                 const thumbnailWidth = 60
                 const thumbnailHeight = VIDEO_TRACK_HEIGHT - (clipMargin * 2) - 4
                 const thumbnailSpacing = thumbnailWidth + 2
-                const visibleThumbnailCount = Math.ceil(clipWidth / thumbnailSpacing) + 1
                 
-                for (let i = 0; i < visibleThumbnailCount && i < capturedFrames.length; i++) {
+                // Calculate how many thumbnails can fit in the clip and which ones are visible
+                const maxThumbnailsInClip = Math.ceil(clipWidth / thumbnailSpacing)
+                const startThumbnailIndex = Math.max(0, Math.floor(-clipScreenX / thumbnailSpacing))
+                const endThumbnailIndex = Math.min(maxThumbnailsInClip, capturedFrames.length, Math.ceil((rect.width - clipScreenX) / thumbnailSpacing) + 1)
+                
+                for (let i = startThumbnailIndex; i < endThumbnailIndex; i++) {
                     const thumbnailX = clipScreenX + (i * thumbnailSpacing) + 2
                     
-                    // Only render if thumbnail is visible and within clip bounds
-                    if (thumbnailX + thumbnailWidth >= clipScreenX && thumbnailX <= clipScreenX + clipWidth && thumbnailX + thumbnailWidth >= 0 && thumbnailX <= rect.width) {
-                        const frameIndex = Math.min(i, capturedFrames.length - 1)
+                    // Only render if thumbnail would be visible
+                    if (thumbnailX + thumbnailWidth >= 0 && thumbnailX <= rect.width) {
+                        // Calculate which frame should be shown at this position based on timing
+                        // Map thumbnail position to time within the clip
+                        const thumbnailTimeRatio = i * thumbnailSpacing / clipWidth
+                        const frameIndex = Math.min(Math.floor(thumbnailTimeRatio * capturedFrames.length), capturedFrames.length - 1)
                         const frame = capturedFrames[frameIndex]
                         
                         if (frame && frame.imageBitmap) {
@@ -438,37 +444,48 @@ export const PixiTimeline: React.FC<PixiTimelineProps> = ({
                 mainContainer.addChild(audioClip)
                 
                 // Render audio waveform
-                // Convert audio data to a flat Float32Array for consistent processing
-                let flatAudioData: Float32Array | null = null
-                
-                if (capturedAudio.length > 0) {
-                    // Convert AudioSample[] to Float32Array
-                    const allSamples: number[] = []
+                // Helper function to get unified audio data from any source
+                const getUnifiedAudioData = (): Float32Array | null => {
                     try {
-                        for (const audioSample of capturedAudio) {
-                            if (audioSample && audioSample.audioBuffer) {
-                                const channelData = audioSample.audioBuffer.getChannelData(0) // Use first channel
-                                allSamples.push(...channelData)
+                        // Prioritize captured audio if available and not recording
+                        if (capturedAudio.length > 0 && !isRecording) {
+                            const firstAudio = capturedAudio[0]
+                            if (firstAudio && firstAudio.audioBuffer) {
+                                return firstAudio.audioBuffer.getChannelData(0)
                             }
                         }
-                        flatAudioData = new Float32Array(allSamples)
-                    } catch (error) {
-                        console.error('Error processing captured audio:', error)
-                    }
-                } else if (realtimeAudioData.length > 0) {
-                    // Convert Float32Array[] to single Float32Array
-                    const allSamples: number[] = []
-                    try {
-                        for (const floatArray of realtimeAudioData) {
-                            if (floatArray && floatArray.length > 0) {
-                                allSamples.push(...Array.from(floatArray))
+                        
+                        // Use realtime audio during recording or if no captured audio
+                        if (realtimeAudioData.length > 0) {
+                            // Simple concatenation without spreading to avoid stack overflow
+                            let totalLength = 0
+                            for (const chunk of realtimeAudioData) {
+                                if (chunk && chunk.length > 0) {
+                                    totalLength += chunk.length
+                                }
+                            }
+                            
+                            if (totalLength > 0) {
+                                const result = new Float32Array(totalLength)
+                                let offset = 0
+                                for (const chunk of realtimeAudioData) {
+                                    if (chunk && chunk.length > 0) {
+                                        result.set(chunk, offset)
+                                        offset += chunk.length
+                                    }
+                                }
+                                return result
                             }
                         }
-                        flatAudioData = new Float32Array(allSamples)
+                        
+                        return null
                     } catch (error) {
-                        console.error('Error processing realtime audio:', error)
+                        console.error('Error processing audio data:', error)
+                        return null
                     }
                 }
+                
+                const flatAudioData = getUnifiedAudioData()
                 
                 
                 if (flatAudioData && flatAudioData.length > 0) {
@@ -559,14 +576,22 @@ export const PixiTimeline: React.FC<PixiTimelineProps> = ({
         const app = new Application()
         
         const initPixi = async () => {
+            // Get actual container dimensions
+            const containerRect = containerRef.current?.getBoundingClientRect()
+            const width = containerRect?.width || 800
+            const height = 180
+            
             await app.init({
-                width: 800,
-                height: 180,
+                width,
+                height,
                 backgroundColor: 0x000000,
                 antialias: true,
                 resolution: window.devicePixelRatio || 1,
                 autoDensity: true
             })
+            
+            // Style the canvas
+            app.canvas.style.display = 'block'
             
             containerRef.current?.appendChild(app.canvas)
             appRef.current = app
@@ -593,7 +618,7 @@ export const PixiTimeline: React.FC<PixiTimelineProps> = ({
         if (appRef.current) {
             renderTimeline()
         }
-    }, [capturedFrames.length, currentFrameIndex, clipTrimStart, clipTrimEnd, timelineZoom, viewportOffset.x, viewportOffset.y])
+    }, [capturedFrames.length, currentFrameIndex, clipTrimStart, clipTrimEnd, timelineZoom, viewportOffset.x, viewportOffset.y, isRecording])
     
     // Auto-scroll to show clips when they first appear
     useEffect(() => {
@@ -636,21 +661,20 @@ export const PixiTimeline: React.FC<PixiTimelineProps> = ({
                 const { width, height } = entry.contentRect
                 appRef.current?.renderer.resize(width, height)
                 
-                // Invalidate render cache on resize
+                // Invalidate render cache on resize and trigger re-render
                 lastRenderParams.current = { 
                     capturedFrames: -1, 
                     currentFrameIndex: -1, 
                     clipTrimStart: -1, 
                     clipTrimEnd: -1, 
                     timelineZoom: -1, 
-                    viewportX: -1,
                     offsetX: -1,
-                    isRecording: false,
-                    realtimeAudioDataLength: -1,
-                    capturedAudioLength: -1
+                    screenWidth: -1,
+                    screenHeight: -1
                 }
                 
-                // Render will be handled automatically by useEffect
+                // Trigger immediate re-render with new dimensions
+                renderTimeline()
             }
         })
         
@@ -763,8 +787,6 @@ export const PixiTimeline: React.FC<PixiTimelineProps> = ({
     }, [isDraggingPlayhead, isDraggingTimeline, capturedFrames.length, timelineZoom, onScrubTimeline, viewportOffset.x])
     
     const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
-        e.preventDefault()
-        
         if (!appRef.current) return
         
         const rect = { width: appRef.current.screen.width, height: appRef.current.screen.height }
@@ -814,7 +836,14 @@ export const PixiTimeline: React.FC<PixiTimelineProps> = ({
         
         const scrollbarWidth = rect.width
         const thumbWidth = Math.max(20, (rect.width / contentWidth) * scrollbarWidth)
-        const thumbPosition = (viewportOffset.x / maxScrollX) * (scrollbarWidth - thumbWidth)
+        
+        // Prevent NaN calculations at extreme zoom levels
+        let thumbPosition = 0
+        if (maxScrollX > 0 && scrollbarWidth > thumbWidth && isFinite(viewportOffset.x)) {
+            thumbPosition = (viewportOffset.x / maxScrollX) * (scrollbarWidth - thumbWidth)
+            // Clamp to valid range
+            thumbPosition = Math.max(0, Math.min(thumbPosition, scrollbarWidth - thumbWidth))
+        }
         
         return (
             <div 
