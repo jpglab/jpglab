@@ -144,4 +144,9 @@ export class GenericPTPCamera extends EventEmitter implements CameraInterface {
         // TODO
         return null
     }
+
+    async streamLiveView(): Promise<Uint8Array> {
+        // TODO: Implement live view streaming
+        throw new Error('streamLiveView not implemented in GenericPTPCamera')
+    }
 }
