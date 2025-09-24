@@ -15,6 +15,66 @@ const downloadFile = (data: Uint8Array, filename: string, mimeType: string = 'ap
     URL.revokeObjectURL(url)
 }
 
+interface ConsoleMessage {
+    type: 'log' | 'warn' | 'error' | 'info'
+    message: string
+    timestamp: number
+}
+
+const useConsoleCapture = () => {
+    const [messages, setMessages] = useState<ConsoleMessage[]>([])
+    
+    useEffect(() => {
+        // Store original console methods
+        const originalLog = console.log
+        const originalWarn = console.warn
+        const originalError = console.error
+        const originalInfo = console.info
+        
+        const captureMessage = (type: ConsoleMessage['type'], args: any[]) => {
+            // Call original console method
+            const original = type === 'log' ? originalLog : 
+                           type === 'warn' ? originalWarn :
+                           type === 'error' ? originalError : originalInfo
+            original.apply(console, args)
+            
+            // Capture and format message
+            const message = args.map(arg => {
+                if (typeof arg === 'object') {
+                    try {
+                        return JSON.stringify(arg, null, 2)
+                    } catch {
+                        return String(arg)
+                    }
+                }
+                return String(arg)
+            }).join(' ')
+            
+            setMessages(prev => {
+                // If we're at 10 messages, remove the oldest one before adding new
+                const newMessages = prev.length >= 10 ? prev.slice(1) : prev
+                return [...newMessages, { type, message, timestamp: Date.now() }]
+            })
+        }
+        
+        // Override console methods
+        console.log = (...args) => captureMessage('log', args)
+        console.warn = (...args) => captureMessage('warn', args)
+        console.error = (...args) => captureMessage('error', args)
+        console.info = (...args) => captureMessage('info', args)
+        
+        // Restore on unmount
+        return () => {
+            console.log = originalLog
+            console.warn = originalWarn
+            console.error = originalError
+            console.info = originalInfo
+        }
+    }, [])
+    
+    return messages
+}
+
 const useCamera = () => {
     const [camera, setCamera] = useState<Camera | null>(null)
     const cameraRef = useRef<Camera | null>(null)
@@ -67,6 +127,7 @@ const Button = ({ children, className = '', ...props }: ButtonHTMLAttributes<HTM
 
 export default function App() {
     const camera = useCamera()
+    const consoleMessages = useConsoleCapture()
     const [connected, setConnected] = useState(false)
     const [cameraInfo, setCameraInfo] = useState<CameraInfo | null>(null)
     const [streaming, setStreaming] = useState(false)
@@ -87,6 +148,14 @@ export default function App() {
     } | null>(null)
     const [changedProps, setChangedProps] = useState<Set<string>>(new Set())
     const previousSettings = useRef<typeof settings>(null)
+    const terminalRef = useRef<HTMLDivElement>(null)
+
+    // Auto-scroll terminal to bottom when new messages arrive
+    useEffect(() => {
+        if (terminalRef.current) {
+            terminalRef.current.scrollTop = terminalRef.current.scrollHeight
+        }
+    }, [consoleMessages])
 
     useEffect(() => {
         const getCameraInfo = async () => {
@@ -419,6 +488,32 @@ export default function App() {
                             </svg>
                         </Button>
                     </div>
+                </div>
+            </div>
+            
+            {/* Terminal-like console output */}
+            <div className="w-full max-w-[80vw] border border-primary/10 rounded-md bg-black/90 p-2">
+                <div 
+                    ref={terminalRef}
+                    className="h-48 overflow-y-auto font-mono text-xs text-green-400/80"
+                    style={{ scrollBehavior: 'smooth' }}
+                >
+                    {consoleMessages.map((msg, index) => (
+                        <div 
+                            key={`${msg.timestamp}-${index}`}
+                            className="whitespace-pre-wrap break-words mb-1"
+                            style={{
+                                color: msg.type === 'error' ? '#ef4444' :
+                                       msg.type === 'warn' ? '#f59e0b' :
+                                       msg.type === 'info' ? '#3b82f6' : '#4ade80cc'
+                            }}
+                        >
+                            <span className="opacity-50">[{new Date(msg.timestamp).toLocaleTimeString()}]</span> {msg.message}
+                        </div>
+                    ))}
+                    {consoleMessages.length === 0 && (
+                        <div className="text-primary/30">Console output will appear here...</div>
+                    )}
                 </div>
             </div>
         </div>
