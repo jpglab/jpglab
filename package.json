@@ -3,15 +3,7 @@
     "version": "0.0.1",
     "type": "module",
     "description": "Connect to & control your camera via PTP with 2 lines of TypeScript",
-    "main": "dist/index.js",
-    "module": "dist/index.mjs",
-    "types": "dist/index.d.ts",
     "exports": {
-        ".": {
-            "types": "./dist/index.d.ts",
-            "import": "./dist/index.mjs",
-            "require": "./dist/index.js"
-        },
         "./web": {
             "types": "./dist/web.d.ts",
             "import": "./dist/web.mjs",
@@ -27,35 +19,14 @@
         "dist"
     ],
     "scripts": {
-        "dev": "vite --config vite.web.config.ts",
-        "dev:web": "vite --config vite.web.config.ts",
-        "build": "tsup",
-        "build:web": "vite build --config vite.web.config.ts",
-        "build:all": "npm run build && npm run build:web",
-        "test": "vitest",
-        "test:ui": "vitest --ui",
-        "test:coverage": "vitest run --coverage",
-        "test:watch": "vitest --watch",
-        "camera:sony": "tsx scripts/test-sony.ts",
-        "camera:sony:verbose": "tsx scripts/test-sony.ts -v",
-        "camera:usb": "tsx scripts/test-usb.ts",
+        "compile": "tsc --noEmit",
+        "build": "vite build && tsc --emitDeclarationOnly",
+        "test": "vitest run",
         "lint": "eslint . --ext .ts,.tsx",
-        "lint:fix": "eslint . --ext .ts,.tsx --fix",
-        "typecheck": "tsc --noEmit",
         "format": "prettier --write .",
-        "quality": "npm run typecheck && npm run lint",
-        "clean": "rm -rf dist dist-web",
-        "preview": "vite preview --config vite.web.config.ts",
-        "prepublishOnly": "npm run clean && npm run quality && npm test && npm run build:all",
-        "compile": "tsc -p tsconfig.json --noEmit",
-        "test:usb": "vitest run src/tests/01_usb.ts --config vitest.config.ts",
-        "test:ptp": "vitest run src/tests/02_ptp.ts --config vitest.config.ts",
-        "test:generic_camera": "vitest run src/tests/03_generic_camera.ts --config vitest.config.ts",
-        "test:sony_camera": "vitest run src/tests/04_sony_camera.ts --config vitest.config.ts",
-        "test:camera": "vitest run src/tests/05_camera.ts --config vitest.config.ts",
-        "test:client": "vitest run src/tests/05_client.ts --config vitest.config.ts",
-        "test:all": "vitest run src/tests/01_usb.ts  --config vitest.config.ts && vitest run src/tests/02_ptp.ts --config vitest.config.ts && vitest run src/tests/03_generic_camera.ts --config vitest.config.ts && vitest run src/tests/04_sony_camera.ts --config vitest.config.ts && vitest run src/tests/05_client.ts --config vitest.config.ts",
-        "all": "bun run compile && bun run lint && bun run format && bun run test:all"
+        "clean": "rm -rf dist",
+        "all": "npm run compile && npm run lint && npm run format && npm run test && npm run build",
+        "example:web": "echo '\n📸 Camera Example: http://localhost:5173/examples/web/\n' && vite"
     },
     "keywords": [
         "ptp",
@@ -73,34 +44,34 @@
         "usb": "^2.11.0"
     },
     "devDependencies": {
+        "@tailwindcss/postcss": "^4.1.13",
+        "@tailwindcss/vite": "^4.1.13",
+        "@types/glob": "^9.0.0",
         "@types/node": "^20.11.0",
+        "@types/react": "^19",
+        "@types/react-dom": "^19",
         "@types/usb": "^2.0.0",
         "@typescript-eslint/eslint-plugin": "^6.21.0",
         "@typescript-eslint/parser": "^6.21.0",
         "@vitejs/plugin-react": "^4.2.1",
         "@vitest/coverage-v8": "^1.2.0",
         "@vitest/ui": "^1.2.0",
+        "autoprefixer": "^10.4.21",
+        "buffer": "^6.0.3",
         "eslint": "^8.56.0",
+        "glob": "^11.0.3",
+        "postcss": "^8.5.6",
         "prettier": "^3.6.2",
-        "react": "^18.2.0",
-        "react-dom": "^18.2.0",
-        "tsup": "^8.0.0",
-        "typescript": "^5.3.0",
-        "vite": "^5.0.12",
+        "process": "^0.11.10",
+        "react": "^19",
+        "react-dom": "^19",
+        "string-similarity": "^4.0.4",
+        "tailwindcss": "^4.1.13",
+        "typescript": "^5.9.2",
+        "vite": "^7.1.7",
         "vitest": "^1.2.0"
     },
-    "peerDependencies": {
-        "react": "^18.0.0",
-        "react-dom": "^18.0.0"
-    },
-    "peerDependenciesMeta": {
-        "react": {
-            "optional": true
-        },
-        "react-dom": {
-            "optional": true
-        }
-    },
+    "optionalDependencies": {},
     "engines": {
         "node": ">=18"
     }

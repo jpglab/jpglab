@@ -1,12 +1,21 @@
 /**
+ * Transport layer main interface
+ */
+
+import { DeviceDescriptor } from './device.interface'
+import { TransportType } from './transport-types'
+
+export { TransportType }
+
+/**
  * Transport layer interface for device communication
  */
 export interface TransportInterface {
     /**
      * Connect to a device
-     * @param device - Device identifier for connection
+     * @param device - Device descriptor for connection
      */
-    connect(device: DeviceIdentifier): Promise<void>
+    connect(device: DeviceDescriptor): Promise<void>
 
     /**
      * Disconnect from the current device
@@ -40,34 +49,9 @@ export interface TransportInterface {
      * Get transport type identifier
      */
     getType(): TransportType
-}
 
-/**
- * Device identifier for transport connections
- */
-export interface DeviceIdentifier {
-    vendorId: number
-    productId: number
-    serialNumber?: string
-    path?: string
-    address?: string
-    port?: number
-}
-
-/**
- * Transport type enumeration
- */
-export enum TransportType {
-    USB = 'usb',
-    IP = 'ip',
-    BLUETOOTH = 'bluetooth',
-}
-
-/**
- * Transport configuration options
- */
-export interface TransportOptions {
-    timeout?: number
-    maxRetries?: number
-    bufferSize?: number
+    /**
+     * Get connected device information
+     */
+    getDeviceInfo?(): DeviceDescriptor | null
 }
