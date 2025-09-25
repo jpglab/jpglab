@@ -26,7 +26,7 @@
         "format": "prettier --write .",
         "clean": "rm -rf dist",
         "all": "npm run compile && npm run lint && npm run format && npm run test && npm run build",
-        "example:web": "echo '\n📸 Camera Example: http://localhost:5173/examples/web/\n' && vite"
+        "example:web": "echo '\n📸 Camera Example: http://localhost:5173/\n' && cd examples/web && npm run dev"
     },
     "keywords": [
         "ptp",

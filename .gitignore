@@ -18,3 +18,5 @@ captured_images/
 .DS_Store
 
 docs/
+
+.svelte-kit/
