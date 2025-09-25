@@ -97,19 +97,13 @@ const LoggerDisplay = forwardRef<LoggerInterface, { maxEntries?: number }>(({ ma
     }
 
     const getTypeColor = (entry: LogEntry) => {
-        switch (entry.type) {
-            case 'ptp_session':
-                return 'magenta'
-            case 'ptp_operation':
-                return 'cyan'
-            case 'usb_transfer':
-                return entry.direction === 'send' ? 'cyan' : 'green'
-            case 'error':
+        switch (entry.status) {
+            case 'succeeded':
+                return 'green'
+            case 'failed':
                 return 'red'
-            case 'info':
-                return 'blue'
             default:
-                return 'white'
+                return 'blue'
         }
     }
 
@@ -121,9 +115,9 @@ const LoggerDisplay = forwardRef<LoggerInterface, { maxEntries?: number }>(({ ma
 
         switch (entry.type) {
             case 'ptp_session':
-                return '⚡'
+                return '⃕$'
             case 'ptp_operation':
-                return entry.status === 'failed' ? '✗' : '⚡'
+                return entry.status === 'succeeded' ? '✔' : '✗'
             case 'usb_transfer':
                 if (entry.status === 'failed') return '✗'
                 return entry.direction === 'send' ? '↗' : '↙'
@@ -153,9 +147,10 @@ const LoggerDisplay = forwardRef<LoggerInterface, { maxEntries?: number }>(({ ma
     const formatMessage = (entry: LogEntry) => {
         switch (entry.type) {
             case 'usb_transfer':
-                return `${entry.message} [using ${entry.endpoint}: ${entry.endpointAddress}] (${entry.bytes} bytes) `
+                return `${entry.message} using ${entry.endpoint} endpoint ${entry.endpointAddress} (${entry.bytes} bytes) `
             case 'ptp_operation':
-                return `${entry.message} ${entry.operation.code.toString(16)} [${entry.operation.code}]`
+                const operationName = entry.operation.name || `0x${entry.operation.code.toString(16)}`
+                return `${entry.message} ${operationName} [${entry.operation.code}]`
             case 'ptp_session':
             case 'error':
             case 'info':
@@ -169,7 +164,7 @@ const LoggerDisplay = forwardRef<LoggerInterface, { maxEntries?: number }>(({ ma
             {Object.values(logs).map(entry => (
                 <Box key={entry.id} marginBottom={0}>
                     <Text dimColor>{formatTime(entry.timestamp)}</Text>
-                    <Text color={getSourcePrefix(entry) === 'USB' ? 'yellow' : 'cyan'} bold>
+                    <Text dimColor color={getSourcePrefix(entry) === 'USB' ? 'yellow' : 'magenta'}>
                         {' '}
                         [{getSourcePrefix(entry)}]{' '}
                     </Text>

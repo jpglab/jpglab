@@ -236,7 +236,7 @@ export class PTPProtocol implements ProtocolInterface {
             const respInfo = respDef ? respDef[1] : null
 
             const success = parsedResponse.code === PTPResponses.OK.code
-            const statusMessage = success ? 'Operation completed' : `Operation failed: ${respName}`
+            const statusMessage = success ? 'Operation completed' : `Operation failed`
             this.logger.updateEntry(opId, {
                 message: statusMessage,
                 status: success ? 'succeeded' : 'failed',
