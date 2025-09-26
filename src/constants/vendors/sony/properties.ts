@@ -412,6 +412,18 @@ export const SonyProperties = {
         },
     },
 
+    MOVIE_REC_BUTTON: {
+        name: 'MOVIE_REC_BUTTON',
+        code: 0xD2C8,
+        type: DataType.UINT16,
+        description: 'Control movie record button (hold)',
+        writable: true,
+        enum: {
+            UP: 0x0001,
+            DOWN: 0x0002,
+        },
+    },
+
     LIVE_VIEW_IMAGE_QUALITY: {
         name: 'LIVE_VIEW_IMAGE_QUALITY',
         code: 0xd26a,
@@ -423,6 +435,18 @@ export const SonyProperties = {
             HIGH: 0x02,
         },
     },
+    CONTENT_TRANSFER_ENABLE: {
+        name: 'CONTENT_TRANSFER_ENABLE',
+        code: 0xD295,
+        type: DataType.UINT8,
+        description: 'Get the contents transfer enabled status.',
+        writable: false,
+        enum: {
+            DISABLE: 0x00,
+            ENABLE: 0x01,
+        },
+    }
+
 } as const satisfies PropertyDefinition<any>
 
 export type SonyPropertyDefinitions = typeof SonyProperties

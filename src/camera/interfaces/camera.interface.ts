@@ -1,5 +1,6 @@
 import { TransportOptions } from '@transport/interfaces/transport-types'
 import { ObjectInfoParsed } from '@camera/generic/object-info-dataset'
+import { ProtocolInterface } from '@core/protocol'
 
 /**
  * Camera connection options
@@ -47,6 +48,16 @@ export interface CameraInterface {
     captureImage(): Promise<{ info: ObjectInfoParsed; data: Uint8Array } | null>
 
     /**
+     * Start recording a video
+     */
+    startRecording(): Promise<void>
+
+    /**
+     * Stop recording a video
+     */
+    stopRecording(): Promise<void>
+
+    /**
      * Get a device property value by name (type-safe with constants)
      * @param propertyName - Name of the property from constants
      */
@@ -74,6 +85,8 @@ export interface CameraInterface {
      * Stream a live view frame
      */
     streamLiveView(): Promise<Uint8Array>
+
+    getProtocol(): ProtocolInterface
 }
 
 /**

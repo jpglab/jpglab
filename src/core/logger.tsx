@@ -150,7 +150,7 @@ const LoggerDisplay = forwardRef<LoggerInterface, { maxEntries?: number }>(({ ma
                 return `${entry.message} using ${entry.endpoint} endpoint ${entry.endpointAddress} (${entry.bytes} bytes) `
             case 'ptp_operation':
                 const operationName = entry.operation.name || `0x${entry.operation.code.toString(16)}`
-                return `${entry.message} ${operationName} [${entry.operation.code}]`
+                return `${entry.message} ${operationName} (0x${entry.operation.code.toString(16)})`
             case 'ptp_session':
             case 'error':
             case 'info':
@@ -162,16 +162,36 @@ const LoggerDisplay = forwardRef<LoggerInterface, { maxEntries?: number }>(({ ma
     return (
         <Box flexDirection="column">
             {Object.values(logs).map(entry => (
-                <Box key={entry.id} marginBottom={0}>
-                    <Text dimColor>{formatTime(entry.timestamp)}</Text>
-                    <Text dimColor color={getSourcePrefix(entry) === 'USB' ? 'yellow' : 'magenta'}>
-                        {' '}
-                        [{getSourcePrefix(entry)}]{' '}
-                    </Text>
-                    <Text color={getTypeColor(entry)} bold>
-                        {getTypeIcon(entry)}{' '}
-                    </Text>
-                    <Text color={getTypeColor(entry)}>{formatMessage(entry)}</Text>
+                <Box key={entry.id} flexDirection="row" gap={1}>
+                    <Box display="flex" flexDirection="row" gap={2}>
+                        <Text dimColor>{formatTime(entry.timestamp)}</Text>
+                        <Text dimColor color={getSourcePrefix(entry) === 'USB' ? 'yellow' : 'magenta'}>
+                            [{getSourcePrefix(entry)}]
+                        </Text>
+                        <Text color={getTypeColor(entry)} bold>
+                            {getTypeIcon(entry)}
+                        </Text>
+                    </Box>
+                    <Box display="flex" flexDirection="column">
+                        <Text color={getTypeColor(entry)}>{formatMessage(entry)}</Text>
+                        {entry.type === 'ptp_operation' && entry.operation.parameters && (
+                            <Box display="flex" flexDirection="column" marginLeft={4}>
+                                <Text color="cyan">Parameters:</Text>
+                                <Box display="flex" flexDirection="column" marginLeft={4}>
+                                    {entry.operation.parameters.map(param => (
+                                        <Text key={param.toString()} color="cyan">
+                                            {`- 0x${param.toString(16)} (${param})`}
+                                        </Text>
+                                    ))}
+                                </Box>
+                                <Text color="cyan">Response:</Text>
+                                <Box display="flex" flexDirection="column" marginLeft={4}>
+                                    {entry?.response?.name}
+                                    {entry?.response?.description}
+                                </Box>
+                            </Box>
+                        )}
+                    </Box>
                 </Box>
             ))}
         </Box>

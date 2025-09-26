@@ -151,6 +151,14 @@ export class Camera {
         return this.cameraImplementation?.captureImage() || null
     }
 
+    async startRecording(): Promise<void> {
+        return this.cameraImplementation?.startRecording()
+    }
+
+    async stopRecording(): Promise<void> {
+        return this.cameraImplementation?.stopRecording()
+    }
+
     async captureLiveView(): Promise<{ info: ObjectInfoParsed; data: Uint8Array } | null> {
         return this.cameraImplementation?.captureLiveView() || null
     }
@@ -167,5 +175,13 @@ export class Camera {
     async setDeviceProperty(propertyName: string, value: any): Promise<void> {
         if (!this.cameraImplementation) throw new Error('Camera not connected')
         return this.cameraImplementation.setDeviceProperty(propertyName, value)
+    }
+
+    /**
+     * Get access to the underlying camera implementation for advanced operations
+     * @returns The underlying camera implementation
+     */
+    getCameraImplementation(): CameraInterface | undefined {
+        return this.cameraImplementation
     }
 }

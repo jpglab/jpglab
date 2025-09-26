@@ -80,6 +80,7 @@ export enum MessageType {
 export interface Operation {
     code: HexCode
     // Constant fields
+    name?: string
     description?: string
     parameters?:
         | Array<{

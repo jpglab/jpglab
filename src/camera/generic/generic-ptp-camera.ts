@@ -61,6 +61,16 @@ export class GenericPTPCamera extends EventEmitter implements CameraInterface {
         return null
     }
 
+    async startRecording(): Promise<void> {
+        // TODO
+        return
+    }
+
+    async stopRecording(): Promise<void> {
+        // TODO
+        return
+    }
+
     async getDeviceProperty<T = any>(propertyName: keyof typeof PTPProperties): Promise<T> {
         const property = PTPProperties[propertyName]
         if (!property) {
@@ -143,5 +153,18 @@ export class GenericPTPCamera extends EventEmitter implements CameraInterface {
     async captureLiveView(): Promise<{ info: ObjectInfoParsed; data: Uint8Array } | null> {
         // TODO
         return null
+    }
+
+    async streamLiveView(): Promise<Uint8Array> {
+        // TODO
+        return new Uint8Array()
+    }
+
+    /**
+     * Get access to the underlying protocol for advanced operations
+     * @returns The protocol interface
+     */
+    getProtocol(): ProtocolInterface {
+        return this.protocol
     }
 }
