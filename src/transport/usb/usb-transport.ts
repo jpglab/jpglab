@@ -4,6 +4,7 @@ import { DeviceFinderInterface, DeviceDescriptor } from '@transport/interfaces/d
 import { TransportType } from '@transport/interfaces/transport-types'
 import { USB_LIMITS } from '@constants/ptp/containers'
 import { toBuffer, toUint8Array } from '@core/buffers'
+import { LoggerInterface } from '@core/logger'
 
 /**
  * USB transport implementation for PTP communication
@@ -18,7 +19,8 @@ export class USBTransport implements TransportInterface {
 
     constructor(
         private readonly deviceFinder: DeviceFinderInterface,
-        private readonly endpointManager: EndpointManagerInterface
+        private readonly endpointManager: EndpointManagerInterface,
+        private readonly logger?: LoggerInterface
     ) {}
 
     /**
@@ -118,15 +120,49 @@ export class USBTransport implements TransportInterface {
         const endpointAddress = this.isWebEnvironment
             ? this.endpoints.bulkOut.endpointNumber
             : this.endpoints.bulkOut.descriptor.bEndpointAddress
-        console.log(`USB Transport: Sending ${buffer.length} bytes to endpoint 0x${endpointAddress.toString(16)}`)
 
-        if (this.isWebEnvironment) {
-            const result = await this.device.transferOut(this.endpoints.bulkOut.endpointNumber, buffer)
-            if (result.status !== 'ok') {
-                throw new Error(`Transfer failed: ${result.status}`)
+        // Use progress tracking if logger is available
+        if (this.logger) {
+            const transferId = this.logger.addLog({
+                type: 'usb_transfer',
+                direction: 'send',
+                message: 'Send data',
+                bytes: buffer.length,
+                endpoint: 'bulkOut',
+                endpointAddress: `0x${endpointAddress.toString(16)}`,
+                status: 'pending',
+            })
+
+            try {
+                if (this.isWebEnvironment) {
+                    const result = await this.device.transferOut(this.endpoints.bulkOut.endpointNumber, buffer)
+                    if (result.status !== 'ok') {
+                        throw new Error(`Transfer failed: ${result.status}`)
+                    }
+                } else {
+                    await this.sendNodeUSB(buffer)
+                }
+
+                this.logger.updateEntry(transferId, {
+                    message: 'Sent data',
+                    status: 'succeeded',
+                })
+            } catch (error) {
+                this.logger.updateEntry(transferId, {
+                    message: `Transfer failed: ${error}`,
+                    status: 'failed',
+                })
+                throw error
             }
         } else {
-            await this.sendNodeUSB(buffer)
+            if (this.isWebEnvironment) {
+                const result = await this.device.transferOut(this.endpoints.bulkOut.endpointNumber, buffer)
+                if (result.status !== 'ok') {
+                    throw new Error(`Transfer failed: ${result.status}`)
+                }
+            } else {
+                await this.sendNodeUSB(buffer)
+            }
         }
     }
 
@@ -141,21 +177,59 @@ export class USBTransport implements TransportInterface {
         const endpointAddr = this.isWebEnvironment
             ? this.endpoints.bulkIn.endpointNumber
             : (this.endpoints.bulkIn as any).descriptor?.bEndpointAddress
-        console.log(
-            `USB Transport: Receiving up to ${maxLength} bytes from endpoint 0x${endpointAddr?.toString(16) || '??'}`
-        )
 
-        if (this.isWebEnvironment) {
-            const transferSize = Math.min(maxLength, USB_LIMITS.MAX_WEBUSB_TRANSFER)
+        // Use progress tracking if logger is available
+        if (this.logger) {
+            const receiveId = this.logger.addLog({
+                type: 'usb_transfer',
+                direction: 'receive',
+                message: 'Receive data',
+                bytes: maxLength,
+                endpoint: 'bulkIn',
+                endpointAddress: `0x${endpointAddr?.toString(16) || '??'}`,
+                status: 'pending',
+            })
 
-            const result = await this.device.transferIn(this.endpoints.bulkIn.endpointNumber, transferSize)
-            if (result.status !== 'ok') {
-                throw new Error(`Transfer failed: ${result.status}`)
+            try {
+                let result: any
+                if (this.isWebEnvironment) {
+                    const transferSize = Math.min(maxLength, USB_LIMITS.MAX_WEBUSB_TRANSFER)
+                    result = await this.device.transferIn(this.endpoints.bulkIn.endpointNumber, transferSize)
+                    if (result.status !== 'ok') {
+                        throw new Error(`Transfer failed: ${result.status}`)
+                    }
+                } else {
+                    result = await this.receiveNodeUSB(maxLength)
+                }
+
+                const receivedBytes = this.isWebEnvironment ? result.data.byteLength : result.length
+                this.logger.updateEntry(receiveId, {
+                    message: 'Received data',
+                    bytes: receivedBytes,
+                    status: 'succeeded',
+                })
+
+                return this.isWebEnvironment ? toUint8Array(result.data.buffer) : toUint8Array(result)
+            } catch (error) {
+                this.logger.updateEntry(receiveId, {
+                    message: `Receive failed: ${error}`,
+                    status: 'failed',
+                })
+                throw error
             }
-            console.log(`USB Transport: Received ${result.data.byteLength} bytes`)
-            return toUint8Array(result.data.buffer)
         } else {
-            return this.receiveNodeUSB(maxLength)
+            if (this.isWebEnvironment) {
+                const transferSize = Math.min(maxLength, USB_LIMITS.MAX_WEBUSB_TRANSFER)
+
+                const result = await this.device.transferIn(this.endpoints.bulkIn.endpointNumber, transferSize)
+                if (result.status !== 'ok') {
+                    throw new Error(`Transfer failed: ${result.status}`)
+                }
+
+                return toUint8Array(result.data.buffer)
+            } else {
+                return this.receiveNodeUSB(maxLength)
+            }
         }
     }
 
@@ -235,11 +309,7 @@ export class USBTransport implements TransportInterface {
      */
     private async sendNodeUSB(buffer: Buffer): Promise<void> {
         return new Promise((resolve, reject) => {
-            console.log(`USB Transport: Calling transfer with ${buffer.length} bytes`)
-
             this.endpoints.bulkOut.transfer(buffer, async (error: any) => {
-                console.log(`USB Transport: Transfer callback, error: ${error}`)
-
                 if (!error) {
                     resolve()
                     return
@@ -268,18 +338,13 @@ export class USBTransport implements TransportInterface {
     private async receiveNodeUSB(maxLength: number): Promise<Uint8Array> {
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
-                console.log('USB Transport: Receive timeout')
                 reject(new Error('USB receive timeout'))
             }, USB_LIMITS.RECEIVE_TIMEOUT)
 
-            console.log(`USB Transport: Calling transfer with maxLength ${maxLength}`)
-
             this.endpoints.bulkIn.transfer(maxLength, async (error: any, data: Buffer) => {
                 clearTimeout(timeout)
-                console.log(`USB Transport: Receive callback, error: ${error}, data length: ${data?.length || 0}`)
 
                 if (!error) {
-                    console.log(`USB Transport: Successfully received ${data.length} bytes`)
                     resolve(toUint8Array(data))
                     return
                 }
@@ -317,9 +382,8 @@ export class USBTransport implements TransportInterface {
      * Handle stall error by clearing halt
      */
     private async handleStallError(endpointType: EndpointType): Promise<void> {
-        console.log(`USB Transport: Clearing halt on ${endpointType === EndpointType.BULK_IN ? 'IN' : 'OUT'} endpoint`)
+        const direction = endpointType === EndpointType.BULK_IN ? 'IN' : 'OUT'
         await this.endpointManager.clearHalt(endpointType)
-        console.log('USB Transport: Halt cleared')
     }
 
     /**
@@ -327,13 +391,10 @@ export class USBTransport implements TransportInterface {
      */
     private async retryTransfer(buffer: Buffer): Promise<void> {
         return new Promise((resolve, reject) => {
-            console.log('USB Transport: Retrying transfer...')
             this.endpoints.bulkOut.transfer(buffer, (error: any) => {
                 if (error) {
-                    console.log(`USB Transport: Retry failed: ${error}`)
                     reject(error)
                 } else {
-                    console.log('USB Transport: Retry successful')
                     resolve()
                 }
             })
@@ -349,14 +410,11 @@ export class USBTransport implements TransportInterface {
                 reject(new Error('USB receive retry timeout'))
             }, USB_LIMITS.RECEIVE_TIMEOUT)
 
-            console.log('USB Transport: Retrying receive...')
             this.endpoints.bulkIn.transfer(maxLength, (error: any, data: Buffer) => {
                 clearTimeout(timeout)
                 if (error) {
-                    console.log(`USB Transport: Retry failed: ${error}`)
                     reject(error)
                 } else {
-                    console.log(`USB Transport: Retry received ${data?.length || 0} bytes`)
                     resolve(toUint8Array(data))
                 }
             })

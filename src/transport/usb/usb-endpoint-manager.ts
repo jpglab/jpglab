@@ -115,6 +115,7 @@ export class USBEndpointManager implements EndpointManagerInterface {
         if (!endpoints.bulkIn || !endpoints.bulkOut) {
             throw new Error('Required bulk endpoints not found')
         }
+        
 
         this.interface = ptpInterface
         this.configuration = endpoints
@@ -153,7 +154,6 @@ export class USBEndpointManager implements EndpointManagerInterface {
 
         // Claim interface
         ptpInterface.claim()
-        console.log(`USB Endpoint Manager: Interface claimed, analyzing endpoints...`)
 
         // Find endpoints
         const endpoints: EndpointConfiguration = {
@@ -164,9 +164,8 @@ export class USBEndpointManager implements EndpointManagerInterface {
 
         for (const ep of ptpInterface.endpoints) {
             const desc = ep.descriptor
-            console.log(
-                `USB Endpoint Manager: Found endpoint 0x${desc.bEndpointAddress.toString(16)}, type: ${desc.bmAttributes & 0x03}`
-            )
+            const endpointAddr = `0x${desc.bEndpointAddress.toString(16)}`
+            const endpointType = desc.bmAttributes & 0x03
             if (desc.bEndpointAddress & 0x80 && desc.bmAttributes === 2) {
                 endpoints.bulkIn = ep
             } else if (!(desc.bEndpointAddress & 0x80) && desc.bmAttributes === 2) {
@@ -179,6 +178,7 @@ export class USBEndpointManager implements EndpointManagerInterface {
         if (!endpoints.bulkIn || !endpoints.bulkOut) {
             throw new Error('Required bulk endpoints not found')
         }
+        
 
         this.interface = ptpInterface
         this.configuration = endpoints

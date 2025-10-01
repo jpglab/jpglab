@@ -49,6 +49,8 @@ export class SonyCamera extends GenericPTPCamera {
 
     async disconnect(): Promise<void> {
         await super.disconnect()
+
+        return
     }
 
     async getDeviceProperty<T = any>(propertyName: keyof typeof SonyProperties): Promise<T> {
@@ -57,14 +59,16 @@ export class SonyCamera extends GenericPTPCamera {
             throw new Error(`Unknown property: ${String(propertyName)}`)
         }
 
+        if (propertyName === 'EXPOSURE') {
+            const meteredExposure = await this.getDeviceProperty('METERED_EXPOSURE')
+            const exposureCompensation = await this.getDeviceProperty('EXPOSURE_COMPENSATION')
+            return meteredExposure !== '0 EV' ? meteredExposure : exposureCompensation
+        }
+
         const response = await this.protocol.sendOperation({
             ...SonyOperations.SDIO_GET_EXT_DEVICE_PROP_VALUE,
             parameters: [property.code],
         })
-
-        if (response.code !== PTPResponses.OK.code) {
-            throw new Error(`Failed to get property ${propertyName}: 0x${response.code.toString(16)}`)
-        }
 
         if (!response.data) {
             throw new Error(`No data received for property ${propertyName}`)
@@ -110,7 +114,7 @@ export class SonyCamera extends GenericPTPCamera {
         // Determine which operation to use based on property type
         // Some properties use SET_DEVICE_PROPERTY_VALUE, others use CONTROL_DEVICE_PROPERTY
         // Control properties are button-like actions, not settings
-        const isControlProperty = /shutter|focus|^SET_LIVE_VIEW_ENABLE$/i.test(property.name)
+        const isControlProperty = /shutter|focus|^SET_LIVE_VIEW_ENABLE$|MOVIE_REC_BUTTON$/i.test(property.name)
         console.log('isControlProperty', isControlProperty, property.name)
 
         const operation = isControlProperty
@@ -144,6 +148,8 @@ export class SonyCamera extends GenericPTPCamera {
             throw new Error(`Failed to set property ${propertyName}: 0x${response.code.toString(16)}`)
         }
         console.log(`  Successfully set ${propertyName} to "${value}"`)
+
+        return
     }
 
     /**
@@ -178,6 +184,14 @@ export class SonyCamera extends GenericPTPCamera {
                   data: response.data,
               }
             : null
+    }
+
+    async startRecording(): Promise<void> {
+        await this.setDeviceProperty('MOVIE_REC_BUTTON', 'DOWN')
+    }
+
+    async stopRecording(): Promise<void> {
+        await this.setDeviceProperty('MOVIE_REC_BUTTON', 'UP')
     }
 
     async captureLiveView(): Promise<{ info: ObjectInfoParsed; data: Uint8Array } | null> {
@@ -236,7 +250,7 @@ export class SonyCamera extends GenericPTPCamera {
         const response = await this.protocol.sendOperation({
             ...SonyOperations.GET_OBJECT,
             parameters: [SONY_LIVE_VIEW_OBJECT_HANDLE],
-            maxDataLength: 256 * 1024 // 256KB
+            maxDataLength: 256 * 1024, // 256KB
         })
 
         // Parse Sony's live view format
