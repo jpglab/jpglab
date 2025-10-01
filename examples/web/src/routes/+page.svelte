@@ -31,6 +31,7 @@
     const onConnect = async () => {
         await camera?.connect()
         store.connected = true
+        startStreaming()
     }
 
     const onDisconnect = async () => {
@@ -239,6 +240,8 @@
     <div>
         Notes:
         <ul class="list-disc list-outside ms-8 leading-relaxed">
+            <li>WebUSB only works reliably in Chromium based browsers</li>
+            <li>You may need to set permissions for "USB Devices" to "Ask" in Chrome site settings</li>
             <li>Only confirmed working on Sony Alpha series cameras</li>
             <li>USB mode must be set to "PC Remote mode"</li>
             <li>Network > Network Option > Access Authen. Settings must be set to "Off"</li>
