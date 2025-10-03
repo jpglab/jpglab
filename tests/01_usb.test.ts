@@ -6,8 +6,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { TransportFactory } from '@transport/transport-factory'
 import { TransportType } from '@transport/interfaces/transport.interface'
-import { USBDeviceFinder } from '@transport/usb/usb-device-finder'
-import { VendorIDs, VendorNames } from '@constants/vendors/vendor-ids'
+import { VendorIDs, VendorNames } from '@ptp/definitions/vendor-ids'
 
 // Sony vendor ID
 const SONY_VENDOR_ID = VendorIDs.SONY
@@ -17,11 +16,9 @@ const VERBOSE = true
 
 describe('USB Transport', () => {
     let transportFactory: TransportFactory
-    let deviceFinder: USBDeviceFinder
 
     beforeAll(() => {
         transportFactory = new TransportFactory()
-        deviceFinder = new USBDeviceFinder()
 
         if (VERBOSE) {
             console.log('\n========================================')
@@ -40,7 +37,8 @@ describe('USB Transport', () => {
         })
 
         it('should discover devices and interfaces', async () => {
-            const devices = await deviceFinder.getAllDevices()
+            const transport = await transportFactory.createUSBTransport()
+            const devices = await transport.discover()
 
             // Should find multiple devices
             expect(devices).toBeDefined()
@@ -90,7 +88,9 @@ describe('USB Transport', () => {
             console.log(`\n[TEST: Sony Device Detection]`)
             console.log('----------------------------------------')
 
-            const devices = await deviceFinder.findDevices({ vendorId: SONY_VENDOR_ID })
+            const transport = await transportFactory.createUSBTransport()
+            const allDevices = await transport.discover()
+            const devices = allDevices.filter(d => d.vendorId === SONY_VENDOR_ID)
 
             // Should find at least one Sony device
             expect(devices).toBeDefined()
@@ -135,10 +135,9 @@ describe('USB Transport', () => {
 
             // Find PTP devices (still image class)
             console.log('Searching for Sony PTP devices (class 6 - Still Image)...')
-            const devices = await deviceFinder.findDevices({
-                vendorId: SONY_VENDOR_ID,
-                class: 6, // Still Image class
-            })
+            const transport = await transportFactory.createUSBTransport()
+            const allDevices = await transport.discover()
+            const devices = allDevices.filter(d => d.vendorId === SONY_VENDOR_ID)
 
             console.log(`Found ${devices.length} Sony PTP device(s)`)
 
@@ -216,10 +215,8 @@ describe('USB Transport', () => {
 
             // Find a Sony PTP device to test with
             console.log('Looking for Sony PTP device to test interface claiming...')
-            const devices = await deviceFinder.findDevices({
-                vendorId: SONY_VENDOR_ID,
-                class: 6, // Still Image class
-            })
+            const allDevices = await transport.discover()
+            const devices = allDevices.filter(d => d.vendorId === SONY_VENDOR_ID)
 
             if (devices.length > 0) {
                 const device = devices[0]
@@ -276,6 +273,7 @@ describe('USB Transport', () => {
                         console.log('  2. Need elevated permissions (try with sudo)')
                         console.log('  3. Camera is not in correct USB mode')
                         console.log('  4. USB driver conflict')
+                        console.log('  5. Mac PTPCamera is running and hijacking the USB device')
 
                         if (error.errno) {
                             console.log(`\n  Error code: ${error.errno}`)

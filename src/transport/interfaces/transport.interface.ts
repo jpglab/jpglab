@@ -5,17 +5,29 @@
 import { DeviceDescriptor } from './device.interface'
 import { TransportType } from './transport-types'
 
-export { TransportType }
+export { TransportType, DeviceDescriptor }
+
+export interface PTPEvent {
+    code: number
+    transactionId: number
+    parameters: number[]
+}
 
 /**
  * Transport layer interface for device communication
  */
 export interface TransportInterface {
     /**
-     * Connect to a device
-     * @param device - Device descriptor for connection
+     * Discover available devices for this transport
+     * @returns List of available device descriptors
      */
-    connect(device: DeviceDescriptor): Promise<void>
+    discover(): Promise<DeviceDescriptor[]>
+
+    /**
+     * Connect to a device
+     * @param device - Optional device descriptor for connection. If not provided, discovers and connects to first available device.
+     */
+    connect(device?: DeviceDescriptor): Promise<void>
 
     /**
      * Disconnect from the current device
@@ -23,17 +35,17 @@ export interface TransportInterface {
     disconnect(): Promise<void>
 
     /**
-     * Send data to the connected device
-     * @param data - Raw data to send
+     * Send data to device (COMMAND or DATA container)
+     * @param data - Container data to send
      */
     send(data: Uint8Array): Promise<void>
 
     /**
-     * Receive data from the connected device
+     * Receive data from device (DATA or RESPONSE container)
      * @param maxLength - Maximum number of bytes to receive
-     * @returns Received data
+     * @returns Received container data
      */
-    receive(maxLength?: number): Promise<Uint8Array>
+    receive(maxLength: number): Promise<Uint8Array>
 
     /**
      * Check if currently connected to a device
@@ -51,7 +63,56 @@ export interface TransportInterface {
     getType(): TransportType
 
     /**
+     * Get endianness for this transport
+     * USB uses little-endian (per PIMA 15740), IP uses big-endian (per PTP spec)
+     */
+    isLittleEndian(): boolean
+
+    /**
      * Get connected device information
      */
     getDeviceInfo?(): DeviceDescriptor | null
+
+    /**
+     * Register handler for PTP events
+     * @param handler - Callback to handle parsed event data
+     */
+    onEvent?(handler: (event: PTPEvent) => void): void
+
+    /**
+     * Unregister event handler
+     * @param handler - Callback to remove
+     */
+    offEvent?(handler: (event: PTPEvent) => void): void
+
+    /**
+     * Start listening for events
+     */
+    startEventListening?(): Promise<void>
+
+    /**
+     * Stop listening for events
+     */
+    stopEventListening?(): Promise<void>
+
+    /**
+     * Get device status (USB-specific)
+     */
+    getDeviceStatus?(): Promise<{ code: number; parameters: number[] }>
+
+    /**
+     * Cancel a request by transaction ID (USB-specific)
+     */
+    cancelRequest?(transactionId: number): Promise<void>
+
+    /**
+     * Get extended event data (USB-specific)
+     */
+    getExtendedEventData?(bufferSize?: number): Promise<any>
+
+    /**
+     * Drain pending data from endpoints (USB-specific)
+     * @returns true if stale data was found, false otherwise
+     */
+    drainPendingData?(): Promise<boolean>
 }

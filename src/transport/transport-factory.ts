@@ -1,7 +1,6 @@
 import { TransportInterface } from '@transport/interfaces/transport.interface'
 import { TransportType, TransportOptions } from '@transport/interfaces/transport-types'
-import { DeviceFinderInterface } from '@transport/interfaces/device.interface'
-import { EndpointManagerInterface } from '@transport/interfaces/endpoint.interface'
+import { Logger } from '@transport/usb/logger'
 
 /**
  * Transport factory for creating transport implementations
@@ -12,11 +11,9 @@ export class TransportFactory {
      * @param options - USB transport options
      */
     async createUSBTransport(_options?: USBTransportOptions): Promise<TransportInterface> {
-        // Dynamic import for USB transport (Node.js only)
         const { USBTransport } = await import('./usb/usb-transport')
-        const deviceFinder = await this.createUSBDeviceFinder()
-        const endpointManager = await this.createUSBEndpointManager()
-        return new USBTransport(deviceFinder, endpointManager)
+        const logger = new Logger()
+        return new USBTransport(logger)
     }
 
     /**
@@ -44,21 +41,6 @@ export class TransportFactory {
         }
     }
 
-    /**
-     * Create a device finder for USB devices
-     */
-    async createUSBDeviceFinder(): Promise<DeviceFinderInterface> {
-        const { USBDeviceFinder } = await import('./usb/usb-device-finder')
-        return new USBDeviceFinder()
-    }
-
-    /**
-     * Create an endpoint manager for USB devices
-     */
-    async createUSBEndpointManager(): Promise<EndpointManagerInterface> {
-        const { USBEndpointManager } = await import('./usb/usb-endpoint-manager')
-        return new USBEndpointManager()
-    }
 }
 
 /**

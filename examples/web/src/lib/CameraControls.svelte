@@ -1,10 +1,10 @@
 <script lang="ts">
-    import { Camera } from '@api/camera'
+    import type { SonyCamera } from '@camera/sony-camera'
     import { store } from './store.svelte'
     import { cameraQueue } from './queue'
 
     interface Props {
-        camera: Camera
+        camera: SonyCamera
     }
 
     const { camera }: Props = $props()
@@ -124,11 +124,11 @@
         'ISO 32000',
     ]
 
-    const changeSetting = async (propertyName: string, value: string) => {
+    const changeSetting = async (propertyName: any, value: any) => {
         if (!store.connected) return
 
         try {
-            await cameraQueue.push(async () => await camera.setDeviceProperty(propertyName, value))
+            await cameraQueue.push(async () => await camera.set(propertyName, value))
         } catch (error) {
             console.error(`Failed to set ${propertyName} to ${value}:`, error)
         }
@@ -136,17 +136,17 @@
 
     const onApertureChange = (event: Event) => {
         const target = event.target as HTMLSelectElement
-        changeSetting('APERTURE', target.value)
+        changeSetting('Aperture', target.value)
     }
 
     const onShutterSpeedChange = (event: Event) => {
         const target = event.target as HTMLSelectElement
-        changeSetting('SHUTTER_SPEED', target.value)
+        changeSetting('ShutterSpeed', target.value)
     }
 
     const onISOChange = (event: Event) => {
         const target = event.target as HTMLSelectElement
-        changeSetting('ISO', target.value)
+        changeSetting('Iso', target.value)
     }
 </script>
 

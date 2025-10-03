@@ -65,7 +65,7 @@ export interface DeviceFinderInterface {
     findDevices(criteria: DeviceSearchCriteria): Promise<DeviceDescriptor[]>
 
     /**
-     * Request device access (for web environments)
+     * Request device access
      * @param criteria - Device selection criteria
      */
     requestDevice(criteria: DeviceSearchCriteria): Promise<DeviceDescriptor>

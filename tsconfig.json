@@ -19,7 +19,8 @@
             "@transport/*": ["src/transport/*"],
             "@constants/*": ["src/constants/*"],
             "@api/*": ["src/api/*"],
-            "@factories/*": ["src/factories/*"]
+            "@factories/*": ["src/factories/*"],
+            "@ptp/*": ["src/ptp/*"]
         }
     },
     "include": ["src", "tests", "scripts", "examples", "*.config.ts"]

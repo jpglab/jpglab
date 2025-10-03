@@ -1,4 +1,4 @@
-import { Camera } from '@api/camera'
+import type { SonyCamera } from '@camera/sony-camera'
 import { store } from './store.svelte'
 import { wait } from './utils'
 import { cameraQueue } from './queue'
@@ -21,16 +21,16 @@ export const stopStreaming = () => {
     store.frameTimestamps = []
 }
 
-export const streamFrame = async (camera: Camera, ctx: CanvasRenderingContext2D) => {
+export const streamFrame = async (camera: SonyCamera, ctx: CanvasRenderingContext2D) => {
     if (!store.streaming || !camera || !store.connected || !store.canvasRef) return
 
     try {
         const newSettings = await cameraQueue.push(async () => ({
-            aperture: await camera.getDeviceProperty('APERTURE'),
-            shutterSpeed: await camera.getDeviceProperty('SHUTTER_SPEED'),
-            iso: await camera.getDeviceProperty('ISO'),
-            exposure: await camera.getDeviceProperty('EXPOSURE'),
-            liveViewImageQuality: await camera.getDeviceProperty('LIVE_VIEW_IMAGE_QUALITY'),
+            aperture: await camera.get('Aperture'),
+            shutterSpeed: await camera.get('ShutterSpeed'),
+            iso: await camera.get('Iso'),
+            exposure: await camera.get('Exposure'),
+            liveViewImageQuality: await camera.get('LiveViewImageQuality'),
         }))
 
         // Track which properties changed

@@ -1,5 +1,7 @@
 <script lang="ts">
-    import { Camera } from '@api/camera'
+    import { SonyCamera } from '@camera/sony-camera'
+    import { USBTransport } from '@transport/usb/usb-transport'
+    import { BrowserLogger } from '../lib/browser-logger'
     import Button from '../lib/Button.svelte'
     import CameraControls from '../lib/CameraControls.svelte'
     import { store } from '../lib/store.svelte'
@@ -7,7 +9,9 @@
     import { streamFrame, startStreaming, stopStreaming } from '../lib/streaming'
     import { cameraQueue } from '../lib/queue'
 
-    let camera: Camera = new Camera()
+    const logger = new BrowserLogger()
+    const transport = new USBTransport(logger)
+    let camera: SonyCamera = new SonyCamera(transport, logger)
 
     $effect(() => {
         if (!store.canvasRef) return
@@ -43,7 +47,7 @@
     const onCaptureImage = async () => {
         const result = await cameraQueue.push(async () => await camera.captureImage())
         if (result?.data) {
-            const filename = result.info?.filename || 'captured_image.jpg'
+            const filename = result.info?.filename || `capture_${Date.now()}.jpg`
             downloadFile(result.data, filename, 'image/jpeg')
         }
     }
@@ -61,7 +65,7 @@
     const onCaptureLiveView = async () => {
         const result = await cameraQueue.push(async () => await camera.captureLiveView())
         if (result?.data) {
-            const filename = result.info?.filename || 'captured_liveview.jpg'
+            const filename = result.info?.filename || `liveview_${Date.now()}.jpg`
             downloadFile(result.data, filename, 'image/jpeg')
         }
     }
@@ -69,8 +73,8 @@
     const onToggleLiveViewImageQuality = async () => {
         await cameraQueue.push(
             async () =>
-                await camera.setDeviceProperty(
-                    'LIVE_VIEW_IMAGE_QUALITY',
+                await camera.set(
+                    'LiveViewImageQuality',
                     store.settings?.liveViewImageQuality === 'HIGH' ? 'LOW' : 'HIGH'
                 )
         )

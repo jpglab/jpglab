@@ -16,6 +16,7 @@ export default defineConfig({
             '@factories': path.resolve('../../src/factories'),
             '@api': path.resolve('../../src/api'),
             '@constants': path.resolve('../../src/constants'),
+            '@ptp': path.resolve('../../src/ptp'),
         },
     },
     build: {

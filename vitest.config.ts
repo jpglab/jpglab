@@ -10,6 +10,7 @@ export default defineConfig({
             '@factories': resolve(__dirname, './src/factories'),
             '@api': resolve(__dirname, './src/api'),
             '@constants': resolve(__dirname, './src/constants'),
+            '@ptp': resolve(__dirname, './src/ptp'),
         },
     },
     test: {
