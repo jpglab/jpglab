@@ -2,12 +2,12 @@ import { describe, it, expect, afterAll } from 'vitest'
 import { GenericCamera } from '../src/camera/generic-camera'
 import { TransportFactory } from '@transport/transport-factory'
 import { TransportInterface } from '@transport/interfaces/transport.interface'
-import { Logger } from '@transport/usb/logger'
+import { Logger } from '@core/logger'
 
 describe('GenericCamera', () => {
     let transport: TransportInterface
-    let camera: GenericCamera
-    let logger: Logger
+    let camera: GenericCamera<any, any, any, any>
+    let logger: Logger<any>
 
     afterAll(async () => {
         if (camera && transport && transport.isConnected()) {

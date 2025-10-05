@@ -58,7 +58,7 @@ type Log<Ops extends readonly OperationDefinition[]> = PTPOperationLog<Ops> | US
 // Before adding to logger (no id/timestamp yet)
 type NewLog<Ops extends readonly OperationDefinition[]> = Omit<Log<Ops>, 'id' | 'timestamp'>
 
-export class Logger<Ops extends readonly OperationDefinition[]> {
+export class Logger<Ops extends readonly OperationDefinition[] = readonly OperationDefinition[]> {
     private logs: Map<string, Log<Ops>[]> = new Map() // key: "sessionId:transactionId"
     private orderedTransactions: Array<{
         key: string // "sessionId:transactionId"

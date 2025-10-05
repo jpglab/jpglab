@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { SonyCamera } from '../src/camera/sony-camera'
 import { TransportFactory } from '@transport/transport-factory'
-import { Logger } from '@transport/usb/logger'
+import { Logger } from '@core/logger'
 import * as fs from 'fs'
 import * as path from 'path'
 import { VendorIDs } from '@ptp/definitions/vendor-ids'
@@ -9,7 +9,7 @@ import { VendorIDs } from '@ptp/definitions/vendor-ids'
 describe('SonyCamera', () => {
     let transport: any
     let camera: SonyCamera
-    let logger: Logger
+    let logger: Logger<any>
     let outputDir: string
     let connected = false
 

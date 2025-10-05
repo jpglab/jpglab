@@ -1,8 +1,3 @@
-/**
- * PTP Protocol Implementation
- * Single source of truth with automatic type inference
- */
-
 // Main protocol implementation
 export { GenericCamera } from '@camera/generic-camera'
 export type { OperationName, PropertyName, PropertyValue, PTPEventData } from '@camera/generic-camera'
@@ -25,7 +20,9 @@ export * from '@ptp/definitions/response-definitions'
 export * from '@ptp/definitions/format-definitions'
 
 // Data sets (PTP datasets with codecs)
-export * from '@ptp/datasets'
+export * from '@ptp/datasets/device-info-dataset'
+export * from '@ptp/datasets/object-info-dataset'
+export * from '@ptp/datasets/storage-info-dataset'
 
 // Vendor extensions
 export * from '@ptp/definitions/vendors/sony/sony-operation-definitions'

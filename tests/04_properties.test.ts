@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { SonyCamera } from '../src/camera/sony-camera'
 import { TransportFactory } from '@transport/transport-factory'
-import { Logger } from '@transport/usb/logger'
+import { Logger } from '@core/logger'
 import { VendorIDs } from '@ptp/definitions/vendor-ids'
 
 describe('Sony Property Formats', () => {
     let camera: SonyCamera
     let transport: any
-    let logger: Logger
+    let logger: Logger<any>
 
     beforeAll(async () => {
         const transportFactory = new TransportFactory()

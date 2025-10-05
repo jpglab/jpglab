@@ -1,6 +1,6 @@
 import { TransportInterface } from '@transport/interfaces/transport.interface'
 import { TransportType, TransportOptions } from '@transport/interfaces/transport-types'
-import { Logger } from '@transport/usb/logger'
+import { Logger } from '@core/logger'
 
 /**
  * Transport factory for creating transport implementations

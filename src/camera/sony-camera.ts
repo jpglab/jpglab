@@ -22,11 +22,8 @@ import { getSonyFormatByCode } from '@ptp/definitions/vendors/sony/sony-format-d
 
 // Merge Sony definitions with standard PTP definitions
 const mergedOperationDefinitions = [...standardOperationDefinitions, ...sonyOperationDefinitions] as const
-
 const mergedPropertyDefinitions = [...standardPropertyDefinitions, ...sonyPropertyDefinitions] as const
-
 const mergedResponseDefinitions = [...standardResponseDefinitions, ...sonyResponseDefinitions] as const
-
 const mergedFormatDefinitions = [...standardFormatDefinitions, ...sonyFormatDefinitions] as const
 
 const SDIO_AUTH_PROTOCOL_VERSION = 0x012c
@@ -41,7 +38,6 @@ const SDIO_AUTH_PHASES = {
     PHASE_3: 0x03,
 } as const
 
-import { LoggerInterface } from '@transport/usb/logger'
 import { Logger } from '@core/logger'
 
 const SONY_CAPTURED_IMAGE_OBJECT_HANDLE = 0xffffc001
@@ -140,7 +136,7 @@ export class SonyCamera extends GenericCamera<
             throw new Error(`Property ${propertyName} is not readable`)
         }
 
-        const response = await (this.send as any)('SDIO_GetExtDevicePropValue', {
+        const response = await this.send('SDIO_GetExtDevicePropValue', {
             devicePropCode: property.code,
         })
 
@@ -286,7 +282,7 @@ export class SonyCamera extends GenericCamera<
         await new Promise(resolve => setTimeout(resolve, 500))
 
         const objInfoCodec = new ObjectInfoCodec()
-        objInfoCodec.baseCodecs = this.baseCodecs as any
+        objInfoCodec.baseCodecs = this.baseCodecs
         const objectInfo = objInfoCodec.decode(objectInfoResponse.data).value
         const objectCompressedSize = objectInfo.objectCompressedSize
         const objectFormat = objectInfo.objectFormat
