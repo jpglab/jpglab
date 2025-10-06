@@ -26,7 +26,6 @@ const mergedFormatDefinitions = [...standardFormatDefinitions, ...sonyFormatDefi
 
 const SDIO_AUTH_PROTOCOL_VERSION = 0x012c
 const SDIO_AUTH_DEVICE_PROPERTY_OPTION = 0x01
-const SDIO_AUTH_FUNCTION_MODE = 0x00
 const SDIO_AUTH_KEY_CODE_1 = 0x00000000
 const SDIO_AUTH_KEY_CODE_2 = 0x00000000
 
@@ -66,16 +65,16 @@ export class SonyCamera extends GenericCamera<
         this.sessionId = Math.floor(Math.random() * 0xffffffff)
 
         const openResult = await this.send('SDIO_OpenSession', {
-            sessionId: this.sessionId,
-            functionMode: SDIO_AUTH_FUNCTION_MODE,
+            SessionId: this.sessionId,
+            FunctionMode: 'REMOTE_AND_CONTENT_TRANSFER',
         })
 
         // Check if session was already open (response code 0x201e = SessionAlreadyOpen)
         if (openResult.code === 0x201e) {
             await this.send('CloseSession', {})
             const retryResult = await this.send('SDIO_OpenSession', {
-                sessionId: this.sessionId,
-                functionMode: SDIO_AUTH_FUNCTION_MODE,
+                SessionId: this.sessionId,
+                FunctionMode: 'REMOTE_AND_CONTENT_TRANSFER',
             })
         }
 

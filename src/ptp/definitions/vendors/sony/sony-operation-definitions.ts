@@ -10,15 +10,26 @@ export const sonyOperationDefinitions = [
         dataDirection: 'none',
         operationParameters: [
             {
-                name: 'sessionId',
+                name: 'SessionId',
                 description: 'Unique session identifier',
                 codec: baseCodecs.uint32,
                 required: true,
             },
             {
-                name: 'functionMode',
+                name: 'FunctionMode',
                 description: 'Function mode',
-                codec: baseCodecs.uint32,
+                codec: new EnumCodec(
+                    [
+                        { value: 0x00000000, name: 'REMOTE', description: 'Remote Control Mode' },
+                        { value: 0x00000001, name: 'CONTENT_TRANSFER', description: 'Content Transfer Mode' },
+                        {
+                            value: 0x00000002,
+                            name: 'REMOTE_AND_CONTENT_TRANSFER',
+                            description: 'Remote Control with Transfer Mode',
+                        },
+                    ],
+                    baseCodecs.uint32
+                ),
                 required: true,
             },
         ],
@@ -192,9 +203,40 @@ export const sonyOperationDefinitions = [
         dataDirection: 'none',
         operationParameters: [
             {
-                name: 'transferMode',
-                description: 'Transfer mode setting (1 = enable content transfer)',
-                codec: baseCodecs.uint32,
+                name: 'ContentsSelectType',
+                description: 'The Initiator should send this command with one of the following values:',
+                codec: new EnumCodec(
+                    [
+                        { value: 0x00000000, name: 'INVALID', description: 'INVALID' },
+                        { value: 0x00000001, name: 'CAMERA', description: 'Select on the Camera' },
+                        { value: 0x00000002, name: 'HOST', description: 'Select on the Remote/Host Device' },
+                    ],
+                    baseCodecs.uint32
+                ),
+                required: true,
+            },
+            {
+                name: 'TransferMode',
+                description: 'The Initiator should send this command with one of the following values:',
+                codec: new EnumCodec(
+                    [
+                        { value: 0x00000000, name: 'DISABLE', description: 'DISABLE' },
+                        { value: 0x00000001, name: 'ENABLE', description: 'ENABLE' },
+                    ],
+                    baseCodecs.uint32
+                ),
+                required: true,
+            },
+            {
+                name: 'AdditionalInformation',
+                description: 'The Initiator should send this command with one of the following values:',
+                codec: new EnumCodec(
+                    [
+                        { value: 0x00000000, name: 'NONE', description: 'NONE' },
+                        { value: 0x00000001, name: 'CANCEL', description: 'CANCEL' },
+                    ],
+                    baseCodecs.uint32
+                ),
                 required: true,
             },
         ],

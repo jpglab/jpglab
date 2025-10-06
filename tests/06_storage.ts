@@ -28,16 +28,26 @@ async function main() {
     // const deviceInfo = await camera.send('GetDeviceInfo', {})
     // console.log('Device Info:', deviceInfo)
 
-    // enable live view
-    await camera.set('SetLiveViewEnable', 'ENABLE')
+    // // enable live view
+    // await camera.set('SetLiveViewEnable', 'ENABLE')
 
-    // test object-info dataset
-    const objectInfo = await camera.send('GetObjectInfo', {
-        // this is the liveview dataset
-        ObjectHandle: SONY_LIVE_VIEW_OBJECT_HANDLE,
+    // // test object-info dataset
+    // const objectInfo = await camera.send('GetObjectInfo', {
+    //     // this is the liveview dataset
+    //     ObjectHandle: SONY_LIVE_VIEW_OBJECT_HANDLE,
+    // })
+    await camera.send('SDIO_SetContentsTransferMode', {
+        ContentsSelectType: 'HOST',
+        TransferMode: 'ENABLE',
+        AdditionalInformation: 'NONE',
     })
 
-    // // test storage-info dataset
+    // sleep for 1 second
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    const storageIds = await camera.send('GetStorageIDs', {})
+
+    // test storage-info dataset
     // const storageInfo = await camera.send('GetStorageInfo', {
     //     StorageID: 0x00000001,
     // })
