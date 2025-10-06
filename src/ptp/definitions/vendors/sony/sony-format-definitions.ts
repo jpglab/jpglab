@@ -19,6 +19,12 @@ export const sonyFormatDefinitions = [
         description: 'For MPO File',
         category: 'image',
     },
+    {
+        code: 0xb982,
+        name: 'MP4',
+        description: 'For MP4 File',
+        category: 'video',
+    },
 ] as const satisfies readonly FormatDefinition[]
 
 export const sonyFormatsByCode = new Map(sonyFormatDefinitions.map(f => [f.code, f]))

@@ -1,4 +1,10 @@
 import { CustomCodec, ArrayCodec, baseCodecs } from '@ptp/types/codec'
+import { operationDefinitions } from '@ptp/definitions/operation-definitions'
+import { sonyOperationDefinitions } from '@ptp/definitions/vendors/sony/sony-operation-definitions'
+import { eventDefinitions } from '@ptp/definitions/event-definitions'
+import { sonyEventDefinitions } from '@ptp/definitions/vendors/sony/sony-event-definitions'
+import { formatDefinitions } from '@ptp/definitions/format-definitions'
+import { sonyFormatDefinitions } from '@ptp/definitions/vendors/sony/sony-format-definitions'
 
 export interface DeviceInfo {
     standardVersion: number
@@ -6,11 +12,14 @@ export interface DeviceInfo {
     vendorExtensionVersion: number
     vendorExtensionDesc: string
     functionalMode: number
-    operationsSupported: number[]
-    eventsSupported: number[]
+    operationsSupportedRaw: number[]
+    operationsSupportedDecoded: string[]
+    eventsSupportedRaw: number[]
+    eventsSupportedDecoded: string[]
     devicePropertiesSupported: number[]
     captureFormats: number[]
-    imageFormats: number[]
+    imageFormatsRaw: number[]
+    imageFormatsDecoded: string[]
     manufacturer: string
     model: string
     deviceVersion: string
@@ -35,11 +44,11 @@ export class DeviceInfoCodec extends CustomCodec<DeviceInfo> {
         buffers.push(u16.encode(value.vendorExtensionVersion))
         buffers.push(str.encode(value.vendorExtensionDesc))
         buffers.push(u16.encode(value.functionalMode))
-        buffers.push(arrU16.encode(value.operationsSupported))
-        buffers.push(arrU16.encode(value.eventsSupported))
+        buffers.push(arrU16.encode(value.operationsSupportedRaw))
+        buffers.push(arrU16.encode(value.eventsSupportedRaw))
         buffers.push(arrU16.encode(value.devicePropertiesSupported))
         buffers.push(arrU16.encode(value.captureFormats))
-        buffers.push(arrU16.encode(value.imageFormats))
+        buffers.push(arrU16.encode(value.imageFormatsRaw))
         buffers.push(str.encode(value.manufacturer))
         buffers.push(str.encode(value.model))
         buffers.push(str.encode(value.deviceVersion))
@@ -108,6 +117,27 @@ export class DeviceInfoCodec extends CustomCodec<DeviceInfo> {
         const serialNumber = str.decode(buffer, currentOffset)
         currentOffset += serialNumber.bytesRead
 
+        // Decode operation codes to names
+        const allOperations = [...operationDefinitions, ...sonyOperationDefinitions]
+        const operationsSupportedDecoded = operationsSupported.value.map(code => {
+            const op = allOperations.find(o => o.code === code)
+            return op?.name || `Unknown_0x${code.toString(16)}`
+        })
+
+        // Decode event codes to names
+        const allEvents = [...eventDefinitions, ...sonyEventDefinitions]
+        const eventsSupportedDecoded = eventsSupported.value.map(code => {
+            const evt = allEvents.find(e => e.code === code)
+            return evt?.name || `Unknown_0x${code.toString(16)}`
+        })
+
+        // Decode image format codes to names
+        const allFormats = [...formatDefinitions, ...sonyFormatDefinitions]
+        const imageFormatsDecoded = imageFormats.value.map(code => {
+            const fmt = allFormats.find(f => f.code === code)
+            return fmt?.name || `Unknown_0x${code.toString(16)}`
+        })
+
         return {
             value: {
                 standardVersion: standardVersion.value,
@@ -115,11 +145,14 @@ export class DeviceInfoCodec extends CustomCodec<DeviceInfo> {
                 vendorExtensionVersion: vendorExtensionVersion.value,
                 vendorExtensionDesc: vendorExtensionDesc.value,
                 functionalMode: functionalMode.value,
-                operationsSupported: operationsSupported.value,
-                eventsSupported: eventsSupported.value,
+                operationsSupportedRaw: operationsSupported.value,
+                operationsSupportedDecoded,
+                eventsSupportedRaw: eventsSupported.value,
+                eventsSupportedDecoded,
                 devicePropertiesSupported: devicePropertiesSupported.value,
                 captureFormats: captureFormats.value,
-                imageFormats: imageFormats.value,
+                imageFormatsRaw: imageFormats.value,
+                imageFormatsDecoded,
                 manufacturer: manufacturer.value,
                 model: model.value,
                 deviceVersion: deviceVersion.value,

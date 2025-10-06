@@ -1,12 +1,15 @@
 import { CustomCodec, baseCodecs } from '@ptp/types/codec'
-
+import { formatDefinitions } from '@ptp/definitions/format-definitions'
+import { sonyFormatDefinitions } from '@ptp/definitions/vendors/sony/sony-format-definitions'
 
 export interface ObjectInfo {
     storageID: number
     objectFormat: number
+    objectFormatDecoded: string
     protectionStatus: number
     objectCompressedSize: number
     thumbFormat: number
+    thumbFormatDecoded: string
     thumbCompressedSize: number
     thumbPixWidth: number
     thumbPixHeight: number
@@ -35,9 +38,11 @@ export class ObjectInfoCodec extends CustomCodec<ObjectInfo> {
 
         buffers.push(u32.encode(value.storageID))
         buffers.push(u16.encode(value.objectFormat))
+        // objectFormatDecoded is not encoded - it's derived from objectFormat
         buffers.push(u16.encode(value.protectionStatus))
         buffers.push(u32.encode(value.objectCompressedSize))
         buffers.push(u16.encode(value.thumbFormat))
+        // thumbFormatDecoded is not encoded - it's derived from thumbFormat
         buffers.push(u32.encode(value.thumbCompressedSize))
         buffers.push(u32.encode(value.thumbPixWidth))
         buffers.push(u32.encode(value.thumbPixHeight))
@@ -128,13 +133,23 @@ export class ObjectInfoCodec extends CustomCodec<ObjectInfo> {
         const keywords = str.decode(buffer, currentOffset)
         currentOffset += keywords.bytesRead
 
+        // Decode format codes to names
+        const allFormats = [...formatDefinitions, ...sonyFormatDefinitions]
+        const objectFormatDef = allFormats.find(f => f.code === objectFormat.value)
+        const objectFormatDecoded = objectFormatDef?.name || `Unknown_0x${objectFormat.value.toString(16)}`
+
+        const thumbFormatDef = allFormats.find(f => f.code === thumbFormat.value)
+        const thumbFormatDecoded = thumbFormatDef?.name || (thumbFormat.value === 0 ? 'None' : `Unknown_0x${thumbFormat.value.toString(16)}`)
+
         return {
             value: {
                 storageID: storageID.value,
                 objectFormat: objectFormat.value,
+                objectFormatDecoded,
                 protectionStatus: protectionStatus.value,
                 objectCompressedSize: objectCompressedSize.value,
                 thumbFormat: thumbFormat.value,
+                thumbFormatDecoded,
                 thumbCompressedSize: thumbCompressedSize.value,
                 thumbPixWidth: thumbPixWidth.value,
                 thumbPixHeight: thumbPixHeight.value,

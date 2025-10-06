@@ -10,29 +10,32 @@ const logger = new Logger<typeof mergedOperationDefinitions>()
 const transport = new USBTransport(logger)
 const camera = new SonyCamera(transport, logger)
 
+const SONY_CAPTURED_IMAGE_OBJECT_HANDLE = 0xffffc001
+const SONY_LIVE_VIEW_OBJECT_HANDLE = 0xffffc002
+
 async function main() {
     await camera.connect()
 
-    // test sony ext-device-prop-info dataset
-    const iso = await camera.get('Iso')
-    console.log('ISO:', iso)
-    const shutterSpeed = await camera.get('ShutterSpeed')
-    console.log('Shutter Speed:', shutterSpeed)
-    const aperture = await camera.get('Aperture')
-    console.log('Exposure:', aperture)
+    // // test sony ext-device-prop-info dataset
+    // const iso = await camera.get('Iso')
+    // console.log('ISO:', iso)
+    // const shutterSpeed = await camera.get('ShutterSpeed')
+    // console.log('Shutter Speed:', shutterSpeed)
+    // const aperture = await camera.get('Aperture')
+    // console.log('Exposure:', aperture)
 
-    // test device-info dataset
-    const deviceInfo = await camera.send('GetDeviceInfo', {})
-    console.log('Device Info:', deviceInfo)
+    // // test device-info dataset
+    // const deviceInfo = await camera.send('GetDeviceInfo', {})
+    // console.log('Device Info:', deviceInfo)
 
-    // // enable live view
-    // await camera.set('SetLiveViewEnable', 'ENABLE')
+    // enable live view
+    await camera.set('SetLiveViewEnable', 'ENABLE')
 
-    // // test object-info dataset
-    // const objectInfo = await camera.send('GetObjectInfo', {
-    //     // this is the liveview dataset
-    //     ObjectHandle: 0xffffc002,
-    // })
+    // test object-info dataset
+    const objectInfo = await camera.send('GetObjectInfo', {
+        // this is the liveview dataset
+        ObjectHandle: SONY_LIVE_VIEW_OBJECT_HANDLE,
+    })
 
     // // test storage-info dataset
     // const storageInfo = await camera.send('GetStorageInfo', {
