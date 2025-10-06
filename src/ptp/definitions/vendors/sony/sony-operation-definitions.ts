@@ -1,5 +1,6 @@
 import { OperationDefinition } from '@ptp/types/operation'
 import { EnumCodec, baseCodecs } from '@ptp/types/codec'
+import { sdiExtDevicePropInfoCodec } from '@ptp/datasets/vendors/sony/sdi-ext-device-prop-info-dataset'
 
 export const sonyOperationDefinitions = [
     {
@@ -83,6 +84,7 @@ export const sonyOperationDefinitions = [
         name: 'SDIO_GetExtDevicePropValue',
         description: 'Get the DevicePropInfo.',
         dataDirection: 'out',
+        dataCodec: sdiExtDevicePropInfoCodec,
         operationParameters: [
             {
                 name: 'devicePropCode',

@@ -398,12 +398,11 @@ export class ArrayCodec<T> extends CustomCodec<T[]> {
 
     encode(values: T[]): Uint8Array {
         const resolved = this.resolveBaseCodec(this.elementCodec)
+        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
         const buffers: Uint8Array[] = []
 
-        const lengthBuffer = new Uint8Array(4)
-        const lengthView = new DataView(lengthBuffer.buffer)
-        lengthView.setUint32(0, values.length, false)
-        buffers.push(lengthBuffer)
+        // Use uint32 codec from baseCodecs to get correct endianness
+        buffers.push(u32.encode(values.length))
 
         for (const value of values) {
             buffers.push(resolved.encode(value))
@@ -422,15 +421,18 @@ export class ArrayCodec<T> extends CustomCodec<T[]> {
 
     decode(buffer: Uint8Array, offset = 0): { value: T[]; bytesRead: number } {
         const resolved = this.resolveBaseCodec(this.elementCodec)
+        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
+
         if (buffer.length - offset < 4) {
             throw new Error('Insufficient buffer size for array length')
         }
 
-        const lengthView = new DataView(buffer.buffer, buffer.byteOffset + offset)
-        const length = lengthView.getUint32(0, false)
+        // Use uint32 codec from baseCodecs to get correct endianness
+        const lengthResult = u32.decode(buffer, offset)
+        const length = lengthResult.value
 
         const values: T[] = []
-        let currentOffset = offset + 4
+        let currentOffset = offset + lengthResult.bytesRead
 
         for (let i = 0; i < length; i++) {
             const result = resolved.decode(buffer, currentOffset)

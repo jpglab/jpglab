@@ -1,5 +1,8 @@
 import { OperationDefinition } from '@ptp/types/operation'
 import { baseCodecs, ArrayCodec } from '@ptp/types/codec'
+import { deviceInfoCodec } from '@ptp/datasets/device-info-dataset'
+import { objectInfoCodec } from '@ptp/datasets/object-info-dataset'
+import { storageInfoCodec } from '@ptp/datasets/storage-info-dataset'
 
 export const operationDefinitions = [
     {
@@ -15,6 +18,7 @@ export const operationDefinitions = [
         name: 'GetDeviceInfo',
         description: 'Returns information and capabilities about the responder device',
         dataDirection: 'out',
+        dataCodec: deviceInfoCodec,
         operationParameters: [],
         responseParameters: [],
     },
@@ -55,6 +59,7 @@ export const operationDefinitions = [
         name: 'GetStorageInfo',
         description: 'Returns StorageInfo data set for a storage area',
         dataDirection: 'out',
+        dataCodec: storageInfoCodec,
         operationParameters: [
             {
                 name: 'StorageID',
@@ -136,6 +141,7 @@ export const operationDefinitions = [
         name: 'GetObjectInfo',
         description: 'Returns ObjectInfo data set for an object',
         dataDirection: 'out',
+        dataCodec: objectInfoCodec,
         operationParameters: [
             {
                 name: 'ObjectHandle',

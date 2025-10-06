@@ -14,8 +14,6 @@ import { operationDefinitions as standardOperationDefinitions } from '@ptp/defin
 import { propertyDefinitions as standardPropertyDefinitions } from '@ptp/definitions/property-definitions'
 import { responseDefinitions as standardResponseDefinitions } from '@ptp/definitions/response-definitions'
 import { formatDefinitions as standardFormatDefinitions } from '@ptp/definitions/format-definitions'
-import { baseCodecs } from '@ptp/types/codec'
-import { parseSDIExtDevicePropInfo } from '@ptp/datasets/vendors/sony/sdi-ext-device-prop-info-dataset'
 import { parseLiveViewDataset } from '@ptp/datasets/vendors/sony/sony-live-view-dataset'
 import { ObjectInfoCodec, ObjectInfo } from '@ptp/datasets/object-info-dataset'
 import { getSonyFormatByCode } from '@ptp/definitions/vendors/sony/sony-format-definitions'
@@ -115,18 +113,20 @@ export class SonyCamera extends GenericCamera<
         })
     }
 
+    // async getMetering() {
+    //     if (propertyName === 'Exposure') {
+    //         const meteredExposure = await this.get('MeteredExposure' as N)
+    //         const exposureCompensation = await this.get('ExposureCompensation' as N)
+    //         return (meteredExposure !== '0 EV' ? meteredExposure : exposureCompensation) as PropertyValue<
+    //             N,
+    //             typeof mergedPropertyDefinitions
+    //         >
+    //     }
+    // }
+
     async get<N extends PropertyName<typeof mergedPropertyDefinitions>>(
         propertyName: N
     ): Promise<PropertyValue<N, typeof mergedPropertyDefinitions>> {
-        if (propertyName === 'Exposure') {
-            const meteredExposure = await this.get('MeteredExposure' as N)
-            const exposureCompensation = await this.get('ExposureCompensation' as N)
-            return (meteredExposure !== '0 EV' ? meteredExposure : exposureCompensation) as PropertyValue<
-                N,
-                typeof mergedPropertyDefinitions
-            >
-        }
-
         const property = this.propertyDefinitions.find(p => p.name === propertyName)
         if (!property) {
             throw new Error(`Unknown property: ${propertyName}`)
@@ -140,40 +140,18 @@ export class SonyCamera extends GenericCamera<
             devicePropCode: property.code,
         })
 
-        if (!response.data || response.data.length === 0) {
+        if (!response.data) {
             throw new Error(`No data received from SDIO_GetExtDevicePropValue for ${propertyName}`)
         }
 
-        const parsed = parseSDIExtDevicePropInfo(response.data, this.baseCodecs)
+        // Data is automatically decoded by the operation's dataCodec
+        const propInfo = response.data as any
 
-        // Apply custom codec to decode the raw bytes properly
-        // For enums, we need to convert the numeric value to the enum name
-        const codec = property.codec
+        // Decode the property value from the raw bytes using the property's codec
+        const codec = this.resolveCodec(property.codec as any)
+        const result = codec.decode(propInfo.currentValueBytes)
 
-        // Handle EnumCodec specially - convert numeric value to string name
-        if (codec && typeof codec === 'object' && 'type' in codec && codec.type === 'enum') {
-            const resolvedCodec = this.resolveCodec(codec as any) as any
-            const enumValue = resolvedCodec.getEnumValue(parsed.currentValueDecoded)
-            if (enumValue) {
-                return enumValue.name as PropertyValue<N, typeof mergedPropertyDefinitions>
-            }
-        }
-
-        // Handle custom codecs that need to decode from bytes
-        const isCustomCodec = codec && typeof codec === 'object' && 'type' in codec && codec.type === 'custom'
-
-        if (isCustomCodec) {
-            try {
-                const resolvedCodec = this.resolveCodec(codec as any)
-                const result = resolvedCodec.decode(parsed.currentValueBytes)
-                return result.value as PropertyValue<N, typeof mergedPropertyDefinitions>
-            } catch (e) {
-                // If codec fails, fall back to raw decoded value
-                return parsed.currentValueDecoded as PropertyValue<N, typeof mergedPropertyDefinitions>
-            }
-        }
-
-        return parsed.currentValueDecoded as PropertyValue<N, typeof mergedPropertyDefinitions>
+        return result.value as PropertyValue<N, typeof mergedPropertyDefinitions>
     }
 
     async set<N extends PropertyName<typeof mergedPropertyDefinitions>>(

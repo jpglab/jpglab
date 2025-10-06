@@ -216,12 +216,27 @@ export class GenericCamera<
                 const dataContainer = this.parseContainer(dataRaw)
                 receivedData = dataContainer.payload
 
+                // Decode received data if dataCodec is defined
+                let decodedData: any = undefined
+                if (receivedData && (operation as any).dataCodec) {
+                    try {
+                        const codec = this.resolveCodec((operation as any).dataCodec)
+                        const result = codec.decode(receivedData)
+                        decodedData = result.value
+                    } catch (decodeError) {
+                        console.error(`Failed to decode ${operationName} data:`, decodeError)
+                        console.error(`Received ${receivedData.length} bytes:`, Array.from(receivedData.slice(0, 64)).map(b => b.toString(16).padStart(2, '0')).join(' '))
+                        throw decodeError
+                    }
+                }
+
                 this.logger.updateLog(logId, {
                     dataPhase: {
                         timestamp: Date.now(),
                         direction: 'out',
                         bytes: receivedData?.length || 0,
                         encodedData: receivedData,
+                        decodedData: decodedData,
                         maxDataLength,
                     },
                 })
@@ -238,9 +253,15 @@ export class GenericCamera<
                 },
             })
 
+            // Return decoded data if available
+            const finalData = this.logger.getLogs().find(l => l.id === logId)
+            const returnData = (finalData as any)?.dataPhase?.decodedData !== undefined
+                ? (finalData as any).dataPhase.decodedData
+                : receivedData
+
             return {
                 code: responseContainer.code,
-                data: receivedData,
+                data: returnData,
             }
         } catch (error) {
             throw error
@@ -333,36 +354,50 @@ export class GenericCamera<
     }
 
     private buildCommand(code: number, transactionId: number, params: Uint8Array[]): Uint8Array {
+        const u16 = this.resolveCodec(baseCodecs.uint16)
+        const u32 = this.resolveCodec(baseCodecs.uint32)
+
         const paramBytes = params.reduce((sum, p) => sum + p.length, 0)
         const length = 12 + paramBytes
+
+        const parts: Uint8Array[] = [
+            u32.encode(length),
+            u16.encode(1), // COMMAND type
+            u16.encode(code),
+            u32.encode(transactionId),
+            ...params
+        ]
+
         const buffer = new Uint8Array(length)
-        const view = new DataView(buffer.buffer)
-
-        view.setUint32(0, length, true)
-        view.setUint16(4, 1, true) // COMMAND type
-        view.setUint16(6, code, true)
-        view.setUint32(8, transactionId, true)
-
-        let offset = 12
-        for (const param of params) {
-            buffer.set(param, offset)
-            offset += param.length
+        let offset = 0
+        for (const part of parts) {
+            buffer.set(part, offset)
+            offset += part.length
         }
 
         return buffer
     }
 
     private buildData(code: number, transactionId: number, data: Uint8Array): Uint8Array {
+        const u16 = this.resolveCodec(baseCodecs.uint16)
+        const u32 = this.resolveCodec(baseCodecs.uint32)
+
         const length = 12 + data.length
+
+        const parts: Uint8Array[] = [
+            u32.encode(length),
+            u16.encode(2), // DATA type
+            u16.encode(code),
+            u32.encode(transactionId),
+            data
+        ]
+
         const buffer = new Uint8Array(length)
-        const view = new DataView(buffer.buffer)
-
-        view.setUint32(0, length, true)
-        view.setUint16(4, 2, true) // DATA type
-        view.setUint16(6, code, true)
-        view.setUint32(8, transactionId, true)
-
-        buffer.set(data, 12)
+        let offset = 0
+        for (const part of parts) {
+            buffer.set(part, offset)
+            offset += part.length
+        }
 
         return buffer
     }
@@ -377,12 +412,28 @@ export class GenericCamera<
             throw new Error(`Container too short: ${data.length} bytes`)
         }
 
-        const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-        const length = view.getUint32(0, true)
-        const type = view.getUint16(4, true)
-        const code = view.getUint16(6, true)
-        const transactionId = view.getUint32(8, true)
-        const payload = data.slice(12)
+        const u16 = this.resolveCodec(baseCodecs.uint16)
+        const u32 = this.resolveCodec(baseCodecs.uint32)
+
+        let offset = 0
+
+        const lengthResult = u32.decode(data, offset)
+        const length = lengthResult.value
+        offset += lengthResult.bytesRead
+
+        const typeResult = u16.decode(data, offset)
+        const type = typeResult.value
+        offset += typeResult.bytesRead
+
+        const codeResult = u16.decode(data, offset)
+        const code = codeResult.value
+        offset += codeResult.bytesRead
+
+        const transactionIdResult = u32.decode(data, offset)
+        const transactionId = transactionIdResult.value
+        offset += transactionIdResult.bytesRead
+
+        const payload = data.slice(offset)
 
         return { type, code, transactionId, payload }
     }

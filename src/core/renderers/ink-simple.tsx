@@ -4,6 +4,7 @@ import Spinner from 'ink-spinner'
 import { OperationDefinition } from '../../ptp/types/operation'
 import { Logger, Log, PTPOperationLog, USBTransferLog } from '../logger'
 import { responseDefinitions } from '../../ptp/definitions/response-definitions'
+import { formatJSON } from './formatters/compact-formatter'
 
 interface InkSimpleLoggerProps<Ops extends readonly OperationDefinition[]> {
     logger: Logger<Ops>
@@ -120,7 +121,7 @@ export function InkSimpleLogger<Ops extends readonly OperationDefinition[]>({
                             Object.entries(ptpLog.requestPhase.decodedParams).map(([key, value]) => {
                                 // Format numeric values as hex
                                 const formattedValue = typeof value === 'number'
-                                    ? `0x${value.toString(16)}`
+                                    ? `0x${(value as number).toString(16)}`
                                     : JSON.stringify(value)
                                 return (
                                     <Text key={key}>
@@ -169,14 +170,16 @@ export function InkSimpleLogger<Ops extends readonly OperationDefinition[]>({
                                 {config.showDecodedData &&
                                     ptpLog.dataPhase.decodedData !== undefined &&
                                     ptpLog.dataPhase.decodedData !== null &&
-                                    JSON.stringify(ptpLog.dataPhase.decodedData, null, 2)
-                                        .split('\n')
-                                        .slice(0, 20)
-                                        .map((line, idx) => (
+                                    (() => {
+                                        const prefix = ptpLog.responsePhase ? '  │' : '  '
+                                        const formattedLines = formatJSON(ptpLog.dataPhase.decodedData, 0)
+
+                                        return formattedLines.map((line, idx) => (
                                             <Text key={idx}>
-                                                <Text dimColor>{ptpLog.responsePhase ? '  │' : '  '}</Text>    {line}
+                                                <Text dimColor>{prefix}</Text>    {line}
                                             </Text>
-                                        ))}
+                                        ))
+                                    })()}
                                 {config.showEncodedData && ptpLog.dataPhase.encodedData && (
                                     <Text>
                                         <Text dimColor>{ptpLog.responsePhase ? '  │' : '  '}</Text>    Bytes encoded as [

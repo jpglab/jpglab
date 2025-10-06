@@ -22,12 +22,25 @@ export class LiveViewDatasetCodec extends CustomCodec<LiveViewDataset> {
     }
 
     decode(buffer: Uint8Array, offset = 0): { value: LiveViewDataset; bytesRead: number } {
-        const view = new DataView(buffer.buffer, buffer.byteOffset)
+        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
 
-        const offsetToLiveViewImage = view.getUint32(offset, true)
-        const liveViewImageSize = view.getUint32(offset + 4, true)
-        const offsetToFocalFrameInfo = view.getUint32(offset + 8, true)
-        const focalFrameInfoSize = view.getUint32(offset + 12, true)
+        let currentOffset = offset
+
+        const offsetToLiveViewImageResult = u32.decode(buffer, currentOffset)
+        const offsetToLiveViewImage = offsetToLiveViewImageResult.value
+        currentOffset += offsetToLiveViewImageResult.bytesRead
+
+        const liveViewImageSizeResult = u32.decode(buffer, currentOffset)
+        const liveViewImageSize = liveViewImageSizeResult.value
+        currentOffset += liveViewImageSizeResult.bytesRead
+
+        const offsetToFocalFrameInfoResult = u32.decode(buffer, currentOffset)
+        const offsetToFocalFrameInfo = offsetToFocalFrameInfoResult.value
+        currentOffset += offsetToFocalFrameInfoResult.bytesRead
+
+        const focalFrameInfoSizeResult = u32.decode(buffer, currentOffset)
+        const focalFrameInfoSize = focalFrameInfoSizeResult.value
+        currentOffset += focalFrameInfoSizeResult.bytesRead
 
         const minOffset = Math.min(
             offsetToLiveViewImage > 0 ? offsetToLiveViewImage : Infinity,

@@ -84,7 +84,7 @@ export class Logger<Ops extends readonly OperationDefinition[] = readonly Operat
         import('react').then(React => {
             import('ink').then(({ render }) => {
                 import('./renderers/ink-simple').then(({ InkSimpleLogger }) => {
-                    this.inkInstance = render(React.createElement(InkSimpleLogger, { logger: this }))
+                    this.inkInstance = render(React.createElement(InkSimpleLogger, { logger: this as any }))
                 }).catch(() => {
                     // Ink renderer not available, continue without UI
                 })
