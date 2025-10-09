@@ -82,7 +82,8 @@ export class USBTransport implements TransportInterface {
             .filter(device => {
                 if (device.vendorId === 0) return false
                 if (criteria?.vendorId && criteria.vendorId !== 0 && device.vendorId !== criteria.vendorId) return false
-                if (criteria?.productId && criteria.productId !== 0 && device.productId !== criteria.productId) return false
+                if (criteria?.productId && criteria.productId !== 0 && device.productId !== criteria.productId)
+                    return false
                 if (criteria?.serialNumber && device.serialNumber !== criteria.serialNumber) return false
                 return true
             })
@@ -110,12 +111,16 @@ export class USBTransport implements TransportInterface {
         }
 
         if (!usbDevice) {
-            const filters = deviceIdentifier?.vendorId && deviceIdentifier.vendorId !== 0
-                ? [{
-                    vendorId: deviceIdentifier.vendorId,
-                    ...(deviceIdentifier.productId && deviceIdentifier.productId !== 0 && { productId: deviceIdentifier.productId })
-                }]
-                : Object.values(VendorIDs).map(vendorId => ({ vendorId }))
+            const filters =
+                deviceIdentifier?.vendorId && deviceIdentifier.vendorId !== 0
+                    ? [
+                          {
+                              vendorId: deviceIdentifier.vendorId,
+                              ...(deviceIdentifier.productId &&
+                                  deviceIdentifier.productId !== 0 && { productId: deviceIdentifier.productId }),
+                          },
+                      ]
+                    : Object.values(VendorIDs).map(vendorId => ({ vendorId }))
 
             usbDevice = await usb.requestDevice({ filters })
         }
@@ -131,7 +136,10 @@ export class USBTransport implements TransportInterface {
 
         const ptpInterface = config.interfaces.find(intf => {
             const alt = intf.alternates?.[0] || intf.alternate
-            return alt?.interfaceClass === USB_CLASS_STILL_IMAGE && alt?.interfaceSubclass === USB_SUBCLASS_STILL_IMAGE_CAPTURE
+            return (
+                alt?.interfaceClass === USB_CLASS_STILL_IMAGE &&
+                alt?.interfaceSubclass === USB_SUBCLASS_STILL_IMAGE_CAPTURE
+            )
         })
         if (!ptpInterface) throw new Error('PTP interface not found')
 
@@ -160,10 +168,7 @@ export class USBTransport implements TransportInterface {
         this.isListeningForEvents = false
 
         if (this.endpoints?.interrupt && this.device) {
-            try {
-                await this.device.clearHalt('in', this.endpoints.interrupt.endpointNumber)
-            } catch {}
-            await new Promise(resolve => setTimeout(resolve, 100))
+            await this.clearStall(EndpointType.INTERRUPT)
         }
 
         if (this.device) await this.device.close()
@@ -191,13 +196,18 @@ export class USBTransport implements TransportInterface {
             endpointAddress: `0x${endpoint.toString(16)}`,
             sessionId,
             transactionId,
-            phase: container.type === USBContainerType.COMMAND ? 'request' : container.type === USBContainerType.DATA ? 'data' : 'response',
+            phase:
+                container.type === USBContainerType.COMMAND
+                    ? 'request'
+                    : container.type === USBContainerType.DATA
+                      ? 'data'
+                      : 'response',
         })
 
         let result = await this.device.transferOut(endpoint, buffer.buffer as ArrayBuffer)
 
         if (result.status === 'stall') {
-            await this.handleStallError(EndpointType.BULK_OUT)
+            await this.clearStall(EndpointType.BULK_OUT)
             result = await this.device.transferOut(endpoint, buffer.buffer as ArrayBuffer)
         }
 
@@ -209,15 +219,10 @@ export class USBTransport implements TransportInterface {
 
         const endpoint = this.endpoints.bulkIn.endpointNumber
 
-        const transfer = this.device.transferIn(endpoint, maxLength)
-        const timeout = new Promise<USBInTransferResult>((_, reject) =>
-            setTimeout(() => reject(new Error(`BulkIn timeout after 5s`)), 5000)
-        )
-
-        let result = await Promise.race([transfer, timeout])
+        let result = await this.device.transferIn(endpoint, maxLength)
 
         if (result.status === 'stall') {
-            await this.handleStallError(EndpointType.BULK_IN)
+            await this.clearStall(EndpointType.BULK_IN)
             result = await this.device.transferIn(endpoint, maxLength)
         }
 
@@ -237,13 +242,18 @@ export class USBTransport implements TransportInterface {
             endpointAddress: `0x${endpoint.toString(16)}`,
             sessionId,
             transactionId,
-            phase: container.type === USBContainerType.COMMAND ? 'request' : container.type === USBContainerType.DATA ? 'data' : 'response',
+            phase:
+                container.type === USBContainerType.COMMAND
+                    ? 'request'
+                    : container.type === USBContainerType.DATA
+                      ? 'data'
+                      : 'response',
         })
 
         return data
     }
 
-    private async handleStallError(endpointType: EndpointType): Promise<void> {
+    private async clearStall(endpointType: EndpointType): Promise<void> {
         if (!this.device || !this.endpoints) throw new Error('Cannot handle STALL')
 
         await this.getDeviceStatus()
@@ -287,25 +297,31 @@ export class USBTransport implements TransportInterface {
         view.setUint16(0, 0x4001, true)
         view.setUint32(2, transactionId, true)
 
-        await this.device.controlTransferOut({
-            requestType: 'class',
-            recipient: 'interface',
-            request: USBClassRequest.CANCEL_REQUEST,
-            value: 0,
-            index: this.interfaceNumber,
-        }, data)
+        await this.device.controlTransferOut(
+            {
+                requestType: 'class',
+                recipient: 'interface',
+                request: USBClassRequest.CANCEL_REQUEST,
+                value: 0,
+                index: this.interfaceNumber,
+            },
+            data
+        )
     }
 
     async getDeviceStatus(): Promise<DeviceStatus> {
         if (!this.device) throw new Error('Device not connected')
 
-        const result = await this.device.controlTransferIn({
-            requestType: 'class',
-            recipient: 'interface',
-            request: USBClassRequest.GET_DEVICE_STATUS,
-            value: 0,
-            index: this.interfaceNumber,
-        }, 20)
+        const result = await this.device.controlTransferIn(
+            {
+                requestType: 'class',
+                recipient: 'interface',
+                request: USBClassRequest.GET_DEVICE_STATUS,
+                value: 0,
+                index: this.interfaceNumber,
+            },
+            20
+        )
 
         if (!result || result.status !== 'ok' || !result.data || result.data.byteLength === 0) {
             throw new Error('Failed to get device status')
@@ -329,13 +345,16 @@ export class USBTransport implements TransportInterface {
     async getExtendedEventData(bufferSize = 512): Promise<ExtendedEventData> {
         if (!this.connected || !this.device) throw new Error('Not connected')
 
-        const result = await this.device.controlTransferIn({
-            requestType: 'class',
-            recipient: 'interface',
-            request: USBClassRequest.GET_EXTENDED_EVENT_DATA,
-            value: 0,
-            index: this.interfaceNumber,
-        }, bufferSize)
+        const result = await this.device.controlTransferIn(
+            {
+                requestType: 'class',
+                recipient: 'interface',
+                request: USBClassRequest.GET_EXTENDED_EVENT_DATA,
+                value: 0,
+                index: this.interfaceNumber,
+            },
+            bufferSize
+        )
 
         if (!result || result.status !== 'ok' || !result.data) {
             throw new Error('Failed to get extended event data')
@@ -388,10 +407,7 @@ export class USBTransport implements TransportInterface {
         this.isListeningForEvents = false
 
         if (this.endpoints?.interrupt && this.device) {
-            try {
-                await this.device.clearHalt('in', this.endpoints.interrupt.endpointNumber)
-            } catch {}
-            await new Promise(resolve => setTimeout(resolve, 100))
+            await this.clearStall(EndpointType.INTERRUPT)
         }
     }
 
@@ -407,10 +423,11 @@ export class USBTransport implements TransportInterface {
             }
         }
 
-        this.device.transferIn(this.endpoints.interrupt.endpointNumber, 64)
+        this.device
+            .transferIn(this.endpoints.interrupt.endpointNumber, 64)
             .then((result: USBInTransferResult) => {
                 if (result.status === 'stall') {
-                    this.handleStallError(EndpointType.INTERRUPT).then(restart)
+                    this.clearStall(EndpointType.INTERRUPT).then(restart)
                 } else if (result.status === 'ok' && result.data && result.data.byteLength > 0) {
                     this.handleInterruptData(new Uint8Array(result.data.buffer))
                     restart()
@@ -421,7 +438,7 @@ export class USBTransport implements TransportInterface {
             .catch((error: unknown) => {
                 const message = error instanceof Error ? error.message : String(error)
                 if (!message.includes('LIBUSB_TRANSFER_CANCELLED') && this.isListeningForEvents) {
-                    setTimeout(restart, 100)
+                    restart()
                 }
             })
     }
