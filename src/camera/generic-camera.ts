@@ -119,26 +119,16 @@ export class GenericCamera<
     }
 
     async connect(deviceIdentifier?: DeviceDescriptor): Promise<void> {
-        console.log('[DEBUG] GenericCamera.connect: Calling transport.connect()')
         await this.transport.connect(deviceIdentifier)
-        console.log('[DEBUG] GenericCamera.connect: transport.connect() completed')
 
         // Try to close any existing session first (use sessionId 1 as a fallback)
         // Ignore errors since we don't know if a session is actually open
         this.sessionId = 1
-        console.log('[DEBUG] GenericCamera.connect: Attempting to close any existing session')
-        try {
-            await (this.send as any)('CloseSession', {})
-        } catch (e) {
-            console.log('[DEBUG] GenericCamera.connect: CloseSession failed (expected if no session open)')
-            // Ignore - no session was open or wrong sessionId
-        }
+        await (this.send as any)('CloseSession', {})
 
         // Now open a new session
         this.sessionId = Math.floor(Math.random() * 0xffffffff)
-        console.log(`[DEBUG] GenericCamera.connect: Opening new session with ID 0x${this.sessionId.toString(16)}`)
         await (this.send as any)('OpenSession', { SessionID: this.sessionId })
-        console.log('[DEBUG] GenericCamera.connect: Session opened successfully')
     }
 
     async disconnect(): Promise<void> {
@@ -264,7 +254,6 @@ export class GenericCamera<
         } else if (operation.dataDirection === 'out') {
             // await new Promise<void>(resolve => setTimeout(resolve, 50))
 
-            console.log(`[DEBUG] About to receive data for ${operationName}`)
             // Receive DATA from camera
             // Use custom maxDataLength if provided, otherwise default to 256KB for live view
             const bufferSize = maxDataLength || 256 * 1024

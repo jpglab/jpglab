@@ -20,26 +20,17 @@ const SONY_LIVE_VIEW_OBJECT_HANDLE = 0xffffc002
 async function main() {
     await camera.connect()
 
-    // // test sony ext-device-prop-info dataset
-    // const iso = await camera.get('Iso')
-    // console.log('ISO:', iso)
-    // const shutterSpeed = await camera.get('ShutterSpeed')
-    // console.log('Shutter Speed:', shutterSpeed)
-    // const aperture = await camera.get('Aperture')
-    // console.log('Exposure:', aperture)
+    // test sony ext-device-prop-info dataset
+    const iso = await camera.get('Iso')
+    const shutterSpeed = await camera.get('ShutterSpeed')
+    const aperture = await camera.get('Aperture')
 
-    // // test device-info dataset
-    // const deviceInfo = await camera.send('GetDeviceInfo', {})
-    // console.log('Device Info:', deviceInfo)
+    // test device-info dataset
+    const deviceInfo = await camera.send('GetDeviceInfo', {})
 
-    // // enable live view
-    // await camera.set('SetLiveViewEnable', 'ENABLE')
+    // enable live view
+    await camera.set('SetLiveViewEnable', 'ENABLE')
 
-    // // test object-info dataset
-    // const objectInfo = await camera.send('GetObjectInfo', {
-    //     // this is the liveview dataset
-    //     ObjectHandle: SONY_LIVE_VIEW_OBJECT_HANDLE,
-    // })
     await camera.send('SDIO_SetContentsTransferMode', {
         ContentsSelectType: 'HOST',
         TransferMode: 'ENABLE',
@@ -78,8 +69,6 @@ async function main() {
         .map(Number)
         .filter(id => objectInfos[id].associationType === 0)
 
-    console.log(`Found ${nonAssociationObjectIds.length} files to download`)
-
     // Import fs and path once
     const fs = await import('fs')
     const path = await import('path')
@@ -96,62 +85,47 @@ async function main() {
         const filename = objectInfos[objectId].filename
         const outputPath = path.join(capturedImagesDir, filename)
 
-        console.log(`\n[${nonAssociationObjectIds.indexOf(objectId) + 1}/${nonAssociationObjectIds.length}] Downloading ${filename} (${(objectSize / 1024 / 1024).toFixed(2)} MB)`)
+        // Use Sony's SDIO_GetPartialLargeObject to retrieve the file in chunks
+        const CHUNK_SIZE = 1024 * 1024 * 10 // 10MB chunks
+        const chunks: Uint8Array[] = []
+        let offset = 0
 
-        try {
-            // Use Sony's SDIO_GetPartialLargeObject to retrieve the file in chunks
-            const CHUNK_SIZE = 1024 * 1024 * 10 // 10MB chunks
-            const chunks: Uint8Array[] = []
-            let offset = 0
+        while (offset < objectSize) {
+            const bytesToRead = Math.min(CHUNK_SIZE, objectSize - offset)
 
-            while (offset < objectSize) {
-                const bytesToRead = Math.min(CHUNK_SIZE, objectSize - offset)
+            // Split 64-bit offset into two 32-bit values
+            const offsetLower = offset & 0xffffffff
+            const offsetUpper = Math.floor(offset / 0x100000000) // Divide by 2^32 to get upper 32 bits
 
-                // Split 64-bit offset into two 32-bit values
-                const offsetLower = offset & 0xffffffff
-                const offsetUpper = Math.floor(offset / 0x100000000) // Divide by 2^32 to get upper 32 bits
+            const chunkResponse = await camera.send(
+                'SDIO_GetPartialLargeObject',
+                {
+                    ObjectHandle: objectId,
+                    OffsetLower: offsetLower,
+                    OffsetUpper: offsetUpper,
+                    MaxBytes: bytesToRead,
+                },
+                undefined,
+                // Add 12 bytes for PTP container header (length + type + code + transactionId)
+                offset === 0 ? objectSize + 12 : bytesToRead + 12
+            )
 
-                const chunkResponse = await camera.send(
-                    'SDIO_GetPartialLargeObject',
-                    {
-                        ObjectHandle: objectId,
-                        OffsetLower: offsetLower,
-                        OffsetUpper: offsetUpper,
-                        MaxBytes: bytesToRead,
-                    },
-                    undefined,
-                    offset === 0 ? objectSize : undefined  // Pass total size on first chunk only
-                )
-
-                if (chunkResponse.data) {
-                    chunks.push(chunkResponse.data)
-                    offset += chunkResponse.data.length
-                    const progress = ((offset / objectSize) * 100).toFixed(1)
-                    process.stdout.write(`\r  Progress: ${progress}% (${(offset / 1024 / 1024).toFixed(2)} / ${(objectSize / 1024 / 1024).toFixed(2)} MB)`)
-                } else {
-                    console.error('\n  No data received in chunk response')
-                    break
-                }
-            }
-
-            // Combine all chunks
-            const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
-            const completeFile = new Uint8Array(totalBytes)
-            let writeOffset = 0
-            for (const chunk of chunks) {
-                completeFile.set(chunk, writeOffset)
-                writeOffset += chunk.length
-            }
-
-            // Write file
-            fs.writeFileSync(outputPath, completeFile)
-            console.log(`\n  ✓ Saved to: ${outputPath}`)
-        } catch (error) {
-            console.error(`\n  ✗ Failed to download ${filename}:`, error)
+            chunks.push(chunkResponse.data)
+            offset += chunkResponse.data.length
         }
-    }
 
-    console.log(`\n✓ Download complete! ${nonAssociationObjectIds.length} files saved to ${capturedImagesDir}`)
+        // Combine all chunks
+        const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+        const completeFile = new Uint8Array(totalBytes)
+        let writeOffset = 0
+        for (const chunk of chunks) {
+            completeFile.set(chunk, writeOffset)
+            writeOffset += chunk.length
+        }
+
+        // Write file
+        fs.writeFileSync(outputPath, completeFile)
+    }
 
     await camera.send('SDIO_SetContentsTransferMode', {
         ContentsSelectType: 'HOST',
@@ -163,8 +137,6 @@ async function main() {
 
     // Give logger time to finish rendering before cleanup
     await new Promise(resolve => setTimeout(resolve, 100))
-
-    console.log('Storage IDs:', storageIds)
 }
 
-main().catch(console.error)
+main()
