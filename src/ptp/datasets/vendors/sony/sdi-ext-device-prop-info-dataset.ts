@@ -1,10 +1,22 @@
-import { CodecDefinition, baseCodecs, CustomCodec } from '@ptp/types/codec'
+import { CodecDefinition, BaseCodecRegistry, CodecInstance, CustomCodec } from '@ptp/types/codec'
 import { DatatypeCode } from '@ptp/types/datatype'
 import { getDatatypeByCode } from '@ptp/definitions/datatype-definitions'
-import { propertyDefinitions as standardPropertyDefinitions } from '@ptp/definitions/property-definitions'
-import { sonyPropertyDefinitions } from '@ptp/definitions/vendors/sony/sony-property-definitions'
 import { DevicePropDesc } from '@ptp/datasets/device-prop-desc-dataset'
 import { VariableValueCodec } from '@ptp/datasets/codecs/variable-value-codec'
+
+// Lazy-loaded registry to avoid circular dependency
+let _propertyRegistry: any = null
+
+function getPropertyRegistry() {
+    if (!_propertyRegistry) {
+        const { genericPropertyRegistry } = require('@ptp/definitions/property-definitions')
+        const { sonyPropertyRegistry } = require('@ptp/definitions/vendors/sony/sony-property-definitions')
+        const standardPropertyDefinitions = Object.values(genericPropertyRegistry)
+        const sonyPropertyDefinitions = Object.values(sonyPropertyRegistry)
+        _propertyRegistry = [...sonyPropertyDefinitions, ...standardPropertyDefinitions]
+    }
+    return _propertyRegistry
+}
 
 /**
  * Sony-specific device property descriptor extensions
@@ -15,12 +27,12 @@ export interface SonyDevicePropDesc extends DevicePropDesc {
         enabled: boolean // Sony provides an enabled/disabled flag
         // Sony provides two sets of enum values: one for display (Set) and one for actual Get/Set operations
         enumValuesSet?: {
-            raw: any[]
-            decoded: any[]
+            raw: (number | bigint | string)[]
+            decoded: (number | bigint | string)[]
         }
         enumValuesGetSet?: {
-            raw: any[]
-            decoded: any[]
+            raw: (number | bigint | string)[]
+            decoded: (number | bigint | string)[]
         }
     }
 }
@@ -31,8 +43,6 @@ export interface SDIDevicePropInfoArray {
 }
 
 export class SDIExtDevicePropInfoCodec extends CustomCodec<SonyDevicePropDesc> {
-    readonly type = 'custom' as const
-
     encode(value: SonyDevicePropDesc): Uint8Array {
         throw new Error('Encoding SonyDevicePropDesc is not yet implemented')
     }
@@ -44,15 +54,15 @@ export class SDIExtDevicePropInfoCodec extends CustomCodec<SonyDevicePropDesc> {
             throw new Error(`Buffer too short: expected at least 6 bytes, got ${buffer.length}`)
         }
 
-        const u8 = this.resolveBaseCodec(baseCodecs.uint8)
-        const u16 = this.resolveBaseCodec(baseCodecs.uint16)
+        const u8 = this.baseCodecs.uint8
+        const u16 = this.baseCodecs.uint16
 
         const devicePropertyCodeResult = u16.decode(buffer, currentOffset)
         const devicePropertyCode = devicePropertyCodeResult.value
         currentOffset += devicePropertyCodeResult.bytesRead
 
         const dataTypeResult = u16.decode(buffer, currentOffset)
-        const dataType = dataTypeResult.value as DatatypeCode
+        const dataType: DatatypeCode = dataTypeResult.value
         currentOffset += dataTypeResult.bytesRead
 
         const getSetResult = u8.decode(buffer, currentOffset)
@@ -63,8 +73,7 @@ export class SDIExtDevicePropInfoCodec extends CustomCodec<SonyDevicePropDesc> {
         const isEnabled = isEnabledResult.value
         currentOffset += isEnabledResult.bytesRead
 
-        const valueCodec = new VariableValueCodec(dataType)
-        valueCodec.baseCodecs = this.baseCodecs
+        const valueCodec = new VariableValueCodec(this.baseCodecs, dataType)
 
         const factoryDefaultResult = valueCodec.decode(buffer, currentOffset)
         const factoryDefaultValue = factoryDefaultResult.value.value
@@ -79,8 +88,8 @@ export class SDIExtDevicePropInfoCodec extends CustomCodec<SonyDevicePropDesc> {
         const formFlag = formFlagResult.value
         currentOffset += formFlagResult.bytesRead
 
-        let enumValuesSet: any[] = []
-        let enumValuesGetSet: any[] = []
+        let enumValuesSet: (number | bigint | string)[] = []
+        let enumValuesGetSet: (number | bigint | string)[] = []
 
         if (formFlag === 0x02) {
             const numEnumSetResult = u16.decode(buffer, currentOffset)
@@ -104,51 +113,57 @@ export class SDIExtDevicePropInfoCodec extends CustomCodec<SonyDevicePropDesc> {
             }
         }
 
-        // Look up property name from definitions
-        const allProperties = [...sonyPropertyDefinitions, ...standardPropertyDefinitions]
-        const propertyDef = allProperties.find(p => p.code === devicePropertyCode)
+        // Look up property from definitions (lazy-loaded)
+        const allProperties = getPropertyRegistry()
+        const propertyDef = allProperties.find((p: any) => p.code === devicePropertyCode)
 
         let devicePropertyName = propertyDef?.name || `Unknown_0x${devicePropertyCode.toString(16).padStart(4, '0')}`
         let devicePropertyDescription = propertyDef?.description || ''
 
         // Decode values using property's codec if available
-        let currentValueDecoded = currentValueRaw
-        let enumValuesSetDecoded = enumValuesSet
-        let enumValuesGetSetDecoded = enumValuesGetSet
+        let currentValueDecoded: number | bigint | string = currentValueRaw
+        let enumValuesSetDecoded: (number | bigint | string)[] = enumValuesSet
+        let enumValuesGetSetDecoded: (number | bigint | string)[] = enumValuesGetSet
 
         if (propertyDef && propertyDef.codec) {
-            // Decode current value
-            const codec = propertyDef.codec as any
-            // Set baseCodecs on the codec instance
-            if (codec && typeof codec === 'object') {
-                codec.baseCodecs = this.baseCodecs
-            }
-            const decodedResult = codec.decode(currentValueBytes, 0)
+            // Get codec instance from builder
+            const codecInstance = typeof propertyDef.codec === 'function'
+                ? propertyDef.codec(this.baseCodecs)
+                : propertyDef.codec
+            const decodedResult = codecInstance.decode(currentValueBytes, 0)
             currentValueDecoded = decodedResult.value
 
             // Decode enum values
             if (enumValuesSet.length > 0) {
-                enumValuesSetDecoded = enumValuesSet.map((rawVal: any) => {
+                enumValuesSetDecoded = enumValuesSet.map((rawVal) => {
                     // Get the datatype codec to encode raw value to bytes
                     const datatypeDefinition = getDatatypeByCode(dataType)
                     if (!datatypeDefinition?.codec) return rawVal
 
-                    const datatypeCodec = this.resolveBaseCodec(datatypeDefinition.codec)
+                    // Get datatype codec instance
+                    const datatypeCodec = typeof datatypeDefinition.codec === 'function'
+                        ? datatypeDefinition.codec(this.baseCodecs)
+                        : datatypeDefinition.codec
+
                     const bytes = datatypeCodec.encode(rawVal)
-                    const decoded = codec.decode(bytes, 0)
+                    const decoded = codecInstance.decode(bytes, 0)
                     return decoded.value
                 })
             }
 
             if (enumValuesGetSet.length > 0) {
-                enumValuesGetSetDecoded = enumValuesGetSet.map((rawVal: any) => {
+                enumValuesGetSetDecoded = enumValuesGetSet.map((rawVal) => {
                     // Get the datatype codec to encode raw value to bytes
                     const datatypeDefinition = getDatatypeByCode(dataType)
                     if (!datatypeDefinition?.codec) return rawVal
 
-                    const datatypeCodec = this.resolveBaseCodec(datatypeDefinition.codec)
+                    // Get datatype codec instance
+                    const datatypeCodec = typeof datatypeDefinition.codec === 'function'
+                        ? datatypeDefinition.codec(this.baseCodecs)
+                        : datatypeDefinition.codec
+
                     const bytes = datatypeCodec.encode(rawVal)
-                    const decoded = codec.decode(bytes, 0)
+                    const decoded = codecInstance.decode(bytes, 0)
                     return decoded.value
                 })
             }
@@ -189,7 +204,7 @@ export class SDIExtDevicePropInfoCodec extends CustomCodec<SonyDevicePropDesc> {
 }
 
 export class SDIDevicePropInfoArrayCodec extends CustomCodec<SDIDevicePropInfoArray> {
-    readonly type = 'custom' as const
+    
 
     encode(value: SDIDevicePropInfoArray): Uint8Array {
         throw new Error('Encoding SDIDevicePropInfoArray is not yet implemented')
@@ -197,15 +212,14 @@ export class SDIDevicePropInfoArrayCodec extends CustomCodec<SDIDevicePropInfoAr
 
     decode(buffer: Uint8Array, offset = 0): { value: SDIDevicePropInfoArray; bytesRead: number } {
         let currentOffset = offset
-        const u64 = this.resolveBaseCodec(baseCodecs.uint64)
+        const u64 = this.baseCodecs.uint64
 
         const numOfElementsResult = u64.decode(buffer, currentOffset)
         const numOfElements = Number(numOfElementsResult.value)
         currentOffset += numOfElementsResult.bytesRead
 
         const properties: SonyDevicePropDesc[] = []
-        const propCodec = new SDIExtDevicePropInfoCodec()
-        propCodec.baseCodecs = this.baseCodecs
+        const propCodec = new SDIExtDevicePropInfoCodec(this.baseCodecs)
 
         for (let i = 0; i < numOfElements; i++) {
             const propResult = propCodec.decode(buffer, currentOffset)
@@ -223,5 +237,3 @@ export class SDIDevicePropInfoArrayCodec extends CustomCodec<SDIDevicePropInfoAr
     }
 }
 
-export const sdiExtDevicePropInfoCodec = new SDIExtDevicePropInfoCodec()
-export const sdiDevicePropInfoArrayCodec = new SDIDevicePropInfoArrayCodec()

@@ -32,13 +32,17 @@ export const VendorNames: Record<VendorID, string> = {
 /**
  * Get vendor name from vendor ID
  */
+function isValidVendorID(vendorId: number): vendorId is VendorID {
+    return vendorId in VendorNames
+}
+
 export function getVendorName(vendorId: number): string {
-    return VendorNames[vendorId as VendorID] || 'Unknown Vendor'
+    return isValidVendorID(vendorId) ? VendorNames[vendorId] : "Unknown Vendor"
 }
 
 /**
  * Check if a vendor ID is supported
  */
 export function isSupportedVendor(vendorId: number): boolean {
-    return Object.values(VendorIDs).includes(vendorId as VendorID)
+    const values: number[] = Object.values(VendorIDs); return values.includes(vendorId)
 }

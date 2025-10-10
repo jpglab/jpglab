@@ -2,7 +2,7 @@
  * Safely stringify values including BigInt
  * JSON.stringify cannot handle BigInt, so we convert them to strings
  */
-export function safeStringify(value: any): string {
+export function safeStringify(value: number | bigint | string | boolean | null | undefined | object | Uint8Array): string {
     if (typeof value === 'bigint') {
         return value.toString()
     }

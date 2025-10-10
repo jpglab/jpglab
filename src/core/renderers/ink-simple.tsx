@@ -3,28 +3,30 @@ import { Box, Text } from 'ink'
 import Spinner from 'ink-spinner'
 import { OperationDefinition } from '../../ptp/types/operation'
 import { Logger, Log, PTPOperationLog, USBTransferLog, PTPTransferLog, ConsoleLog } from '../logger'
-import { responseDefinitions } from '../../ptp/definitions/response-definitions'
+import { responseRegistry } from '../../ptp/definitions/response-definitions'
+
+const responseDefinitions = Object.values(responseRegistry)
 import { formatJSON } from './formatters/compact-formatter'
 import { formatBytes } from './formatters/bytes-formatter'
 import { safeStringify } from './formatters/safe-stringify'
 
-interface InkSimpleLoggerProps<Ops extends readonly OperationDefinition[]> {
-    logger: Logger<Ops>
+interface InkSimpleLoggerProps {
+    logger: Logger
 }
 
-interface TransactionGroup<Ops extends readonly OperationDefinition[]> {
+interface TransactionGroup {
     key: string
     sessionId?: number
     transactionId?: number
-    ptpLog?: PTPOperationLog<Ops> | PTPTransferLog<Ops>
+    ptpLog?: PTPOperationLog | PTPTransferLog
     consoleLog?: ConsoleLog
     usbLogs: USBTransferLog[]
     timestamp: number
 }
 
-export function InkSimpleLogger<Ops extends readonly OperationDefinition[]>({
+export function InkSimpleLogger({
     logger,
-}: InkSimpleLoggerProps<Ops>) {
+}: InkSimpleLoggerProps) {
     // Force re-render when logger changes
     const [updateCount, forceUpdate] = React.useReducer(x => x + 1, 0)
 
@@ -35,28 +37,27 @@ export function InkSimpleLogger<Ops extends readonly OperationDefinition[]>({
 
     // Group logs by transaction (re-compute on every update)
     const allLogs = logger.getLogs()
-    const grouped = new Map<string, TransactionGroup<Ops>>()
+    const grouped = new Map<string, TransactionGroup>()
 
     for (const log of allLogs) {
         if (log.type === 'console') {
-            // Console logs get their own group
-            const consoleLog = log as ConsoleLog
-            const key = `console:${consoleLog.id}`
+            // Console logs get their own group - TypeScript narrows to ConsoleLog
+            const key = `console:${log.id}`
             grouped.set(key, {
                 key,
-                consoleLog,
+                consoleLog: log,
                 usbLogs: [],
                 timestamp: log.timestamp,
             })
         } else {
-            const ptpLog = log as PTPOperationLog<Ops> | USBTransferLog | PTPTransferLog<Ops>
-            const key = `${ptpLog.sessionId}:${ptpLog.transactionId}`
+            // PTP logs have sessionId and transactionId - TypeScript narrows
+            const key = `${log.sessionId}:${log.transactionId}`
 
             if (!grouped.has(key)) {
                 grouped.set(key, {
                     key,
-                    sessionId: ptpLog.sessionId,
-                    transactionId: ptpLog.transactionId,
+                    sessionId: log.sessionId,
+                    transactionId: log.transactionId,
                     usbLogs: [],
                     timestamp: log.timestamp,
                 })
@@ -64,9 +65,9 @@ export function InkSimpleLogger<Ops extends readonly OperationDefinition[]>({
 
             const group = grouped.get(key)!
             if (log.type === 'ptp_operation' || log.type === 'ptp_transfer') {
-                group.ptpLog = log as PTPOperationLog<Ops> | PTPTransferLog<Ops>
+                group.ptpLog = log
             } else if (log.type === 'usb_transfer') {
-                group.usbLogs.push(log as USBTransferLog)
+                group.usbLogs.push(log)
             }
         }
     }
@@ -135,11 +136,19 @@ export function InkSimpleLogger<Ops extends readonly OperationDefinition[]>({
                 let duration: number
                 let dataPhaseTime: number
                 let responsePhaseTime: number
+                let transferChunks: Array<{ transactionId: number; timestamp: number; offset: number; bytes: number }> = []
+                let totalBytes = 0
+                let transferredBytes = 0
+
                 if (ptpLog.type === 'ptp_transfer') {
-                    const transferLog = ptpLog as PTPTransferLog<Ops>
+                    // TypeScript narrows to PTPTransferLog
+                    transferChunks = ptpLog.chunks
+                    totalBytes = ptpLog.totalBytes
+                    transferredBytes = ptpLog.transferredBytes
+
                     // First chunk starts at requestPhase timestamp
-                    const firstChunkTime = transferLog.chunks[0]?.timestamp || startTime
-                    const lastChunkTime = transferLog.chunks[transferLog.chunks.length - 1]?.timestamp || Date.now()
+                    const firstChunkTime = transferChunks[0]?.timestamp || startTime
+                    const lastChunkTime = transferChunks[transferChunks.length - 1]?.timestamp || Date.now()
                     dataPhaseTime = lastChunkTime - firstChunkTime
                     responsePhaseTime = ptpLog.responsePhase ? ptpLog.responsePhase.timestamp - lastChunkTime : 0
                     duration = endTime - startTime
@@ -195,7 +204,7 @@ export function InkSimpleLogger<Ops extends readonly OperationDefinition[]>({
                             Object.entries(ptpLog.requestPhase.decodedParams).map(([key, value]) => {
                                 // Format numeric values as hex
                                 const formattedValue = typeof value === 'number'
-                                    ? `0x${(value as number).toString(16)}`
+                                    ? `0x${value.toString(16)}`
                                     : safeStringify(value)
                                 return (
                                     <Text key={key}>
@@ -243,24 +252,24 @@ export function InkSimpleLogger<Ops extends readonly OperationDefinition[]>({
                                 </Text>
                                 {/* Progress bar for transfer logs */}
                                 {ptpLog.type === 'ptp_transfer' && (() => {
-                                    const transferLog = ptpLog as PTPTransferLog<Ops>
-                                    const percent = transferLog.totalBytes > 0
-                                        ? (transferLog.transferredBytes / transferLog.totalBytes) * 100
+                                    // TypeScript narrows to PTPTransferLog
+                                    const percent = totalBytes > 0
+                                        ? (transferredBytes / totalBytes) * 100
                                         : 0
                                     const barLength = 30
                                     const filledLength = Math.round((percent / 100) * barLength)
                                     const bar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength)
 
                                     // Calculate average chunk size
-                                    const avgChunkSize = transferLog.chunks.length > 0
-                                        ? transferLog.transferredBytes / transferLog.chunks.length
+                                    const avgChunkSize = transferChunks.length > 0
+                                        ? transferredBytes / transferChunks.length
                                         : 0
 
                                     // Calculate speed from last chunk
                                     let speedText = ''
-                                    if (transferLog.chunks.length >= 2) {
-                                        const lastChunk = transferLog.chunks[transferLog.chunks.length - 1]
-                                        const prevChunk = transferLog.chunks[transferLog.chunks.length - 2]
+                                    if (transferChunks.length >= 2) {
+                                        const lastChunk = transferChunks[transferChunks.length - 1]
+                                        const prevChunk = transferChunks[transferChunks.length - 2]
                                         const timeDiff = (lastChunk.timestamp - prevChunk.timestamp) / 1000 // seconds
                                         if (timeDiff > 0) {
                                             const bytesPerSecond = lastChunk.bytes / timeDiff
@@ -275,7 +284,7 @@ export function InkSimpleLogger<Ops extends readonly OperationDefinition[]>({
                                                 <Text> {percent.toFixed(1)}%</Text>
                                             </Text>
                                             <Text>
-                                                <Text dimColor>{ptpLog.responsePhase ? '  │' : '  '}</Text>    <Text>{speedText} ({formatBytes(transferLog.totalBytes)} total, {transferLog.chunks.length} chunks @ {formatBytes(avgChunkSize, 0)} each)</Text>
+                                                <Text dimColor>{ptpLog.responsePhase ? '  │' : '  '}</Text>    <Text>{speedText} ({formatBytes(totalBytes)} total, {transferChunks.length} chunks @ {formatBytes(avgChunkSize, 0)} each)</Text>
                                             </Text>
                                         </>
                                     )
@@ -308,8 +317,8 @@ export function InkSimpleLogger<Ops extends readonly OperationDefinition[]>({
 
                                     // For transfer logs, show aggregate USB stats across all chunks
                                     if (ptpLog.type === 'ptp_transfer' && dataUsbLogs.length > 0) {
-                                        const transferLog = ptpLog as PTPTransferLog<Ops>
-                                        const totalBytes = transferLog.transferredBytes
+                                        // TypeScript narrows to PTPTransferLog
+                                        const aggTransferredBytes = transferredBytes
                                         const direction = dataUsbLogs[0].direction === 'send' ? 'to' : 'from'
                                         const endpoint = dataUsbLogs[0].endpoint
                                         const endpointAddress = dataUsbLogs[0].endpointAddress

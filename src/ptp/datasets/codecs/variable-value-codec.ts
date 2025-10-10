@@ -1,19 +1,22 @@
-import { CustomCodec, baseCodecs } from '@ptp/types/codec'
+import { CustomCodec, BaseCodecRegistry, CodecInstance } from '@ptp/types/codec'
 import { DatatypeCode } from '@ptp/types/datatype'
 import { getDatatypeByCode } from '@ptp/definitions/datatype-definitions'
+
+export interface VariableValue {
+    value: number | bigint | string
+    rawBytes: Uint8Array
+}
 
 /**
  * Codec for variable-sized values based on their datatype
  * Used by device property descriptors to encode/decode values of different types
  */
-export class VariableValueCodec extends CustomCodec<{ value: any; rawBytes: Uint8Array }> {
-    readonly type = 'custom' as const
-
-    constructor(private dataType: DatatypeCode) {
-        super()
+export class VariableValueCodec extends CustomCodec<VariableValue> {
+    constructor(baseCodecs: BaseCodecRegistry, private dataType: DatatypeCode) {
+        super(baseCodecs)
     }
 
-    encode(value: { value: any; rawBytes: Uint8Array } | any): Uint8Array {
+    encode(value: VariableValue | number | bigint | string): Uint8Array {
         // If already has rawBytes, use them
         if (value && typeof value === 'object' && 'rawBytes' in value) {
             return value.rawBytes
@@ -28,11 +31,19 @@ export class VariableValueCodec extends CustomCodec<{ value: any; rawBytes: Uint
             throw new Error(`Datatype ${this.dataType} has no codec`)
         }
 
-        const codec = this.resolveBaseCodec(datatypeDefinition.codec)
+        // Get codec instance from builder
+        const codec = typeof datatypeDefinition.codec === 'function'
+            ? datatypeDefinition.codec(this.baseCodecs)
+            : datatypeDefinition.codec
+
+        if (typeof value !== 'number' && typeof value !== 'bigint' && typeof value !== 'string') {
+            throw new Error(`Invalid value type for VariableValueCodec: ${typeof value}`)
+        }
+
         return codec.encode(value)
     }
 
-    decode(buffer: Uint8Array, offset = 0): { value: { value: any; rawBytes: Uint8Array }; bytesRead: number } {
+    decode(buffer: Uint8Array, offset = 0): { value: VariableValue; bytesRead: number } {
         const datatypeDefinition = getDatatypeByCode(this.dataType)
         if (!datatypeDefinition) {
             throw new Error(`Unknown datatype: 0x${this.dataType.toString(16)}`)
@@ -41,9 +52,17 @@ export class VariableValueCodec extends CustomCodec<{ value: any; rawBytes: Uint
             throw new Error(`Datatype ${this.dataType} has no codec`)
         }
 
-        const codec = this.resolveBaseCodec(datatypeDefinition.codec)
+        // Get codec instance from builder
+        const codec = typeof datatypeDefinition.codec === 'function'
+            ? datatypeDefinition.codec(this.baseCodecs)
+            : datatypeDefinition.codec
+
         const result = codec.decode(buffer, offset)
         const rawBytes = buffer.slice(offset, offset + result.bytesRead)
+
+        if (typeof result.value !== 'number' && typeof result.value !== 'bigint' && typeof result.value !== 'string') {
+            throw new Error(`Invalid decoded value type: ${typeof result.value}`)
+        }
 
         return {
             value: {

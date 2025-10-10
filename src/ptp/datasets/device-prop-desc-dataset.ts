@@ -1,8 +1,18 @@
-import { CodecDefinition, baseCodecs, CustomCodec } from '@ptp/types/codec'
+import { CodecDefinition, BaseCodecRegistry, CodecInstance, CustomCodec } from '@ptp/types/codec'
 import { DatatypeCode } from '@ptp/types/datatype'
 import { getDatatypeByCode } from '@ptp/definitions/datatype-definitions'
-import { propertyDefinitions as standardPropertyDefinitions } from '@ptp/definitions/property-definitions'
 import { VariableValueCodec } from '@ptp/datasets/codecs/variable-value-codec'
+
+// Lazy-loaded registry to avoid circular dependency
+let _propertyRegistry: any = null
+
+function getPropertyRegistry() {
+    if (!_propertyRegistry) {
+        const { genericPropertyRegistry } = require('@ptp/definitions/property-definitions')
+        _propertyRegistry = Object.values(genericPropertyRegistry)
+    }
+    return _propertyRegistry
+}
 
 export interface DevicePropDesc {
     devicePropertyCode: number
@@ -10,30 +20,29 @@ export interface DevicePropDesc {
     devicePropertyDescription: string
     dataType: DatatypeCode
     getSet: 'GET' | 'GET_SET'
-    factoryDefaultValue: any
-    currentValueRaw: any
+    factoryDefaultValue: number | bigint | string
+    currentValueRaw: number | bigint | string
     currentValueBytes: Uint8Array
-    currentValueDecoded: any
+    currentValueDecoded: number | bigint | string
     formFlag: number
     // Range form fields (when formFlag === 0x01)
-    minimumValue?: any
-    maximumValue?: any
-    stepSize?: any
+    minimumValue?: number | bigint | string
+    maximumValue?: number | bigint | string
+    stepSize?: number | bigint | string
     // Enumeration form fields (when formFlag === 0x02)
     numberOfValues?: number
-    supportedValuesRaw?: any[]
-    supportedValuesDecoded?: any[]
+    supportedValuesRaw?: (number | bigint | string)[]
+    supportedValuesDecoded?: (number | bigint | string)[]
     vendorExtensions?: {
-        [key: string]: any
+        [key: string]: number | bigint | string | boolean | object
     }
 }
 
 export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
-    readonly type = 'custom' as const
     private use4ByteCode: boolean
 
-    constructor(use4ByteCode: boolean = false) {
-        super()
+    constructor(baseCodecs: BaseCodecRegistry, use4ByteCode: boolean = false) {
+        super(baseCodecs)
         this.use4ByteCode = use4ByteCode
     }
 
@@ -48,9 +57,9 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
             throw new Error(`Buffer too short: expected at least 6 bytes, got ${buffer.length}`)
         }
 
-        const u8 = this.resolveBaseCodec(baseCodecs.uint8)
-        const u16 = this.resolveBaseCodec(baseCodecs.uint16)
-        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
+        const u8 = this.baseCodecs.uint8
+        const u16 = this.baseCodecs.uint16
+        const u32 = this.baseCodecs.uint32
 
         // DevicePropCode (2 or 4 bytes)
         let devicePropertyCode: number
@@ -66,7 +75,7 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
 
         // DataType (2 bytes)
         const dataTypeResult = u16.decode(buffer, currentOffset)
-        const dataType = dataTypeResult.value as DatatypeCode
+        const dataType: DatatypeCode = dataTypeResult.value
         currentOffset += dataTypeResult.bytesRead
 
         // GetSet (1 byte)
@@ -74,8 +83,7 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
         const getSet = getSetResult.value
         currentOffset += getSetResult.bytesRead
 
-        const valueCodec = new VariableValueCodec(dataType)
-        valueCodec.baseCodecs = this.baseCodecs
+        const valueCodec = new VariableValueCodec(this.baseCodecs, dataType)
 
         // FactoryDefaultValue (variable size)
         const factoryDefaultResult = valueCodec.decode(buffer, currentOffset)
@@ -93,28 +101,29 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
         const formFlag = formFlagResult.value
         currentOffset += formFlagResult.bytesRead
 
-        // Look up property name from definitions
-        const propertyDef = standardPropertyDefinitions.find(p => p.code === devicePropertyCode)
+        // Look up property name from definitions (lazy-loaded)
+        const propertyRegistry = getPropertyRegistry()
+        const propertyDef = propertyRegistry.find((p: any) => p.code === devicePropertyCode)
         const devicePropertyName = propertyDef?.name || `Unknown_0x${devicePropertyCode.toString(16).padStart(4, '0')}`
         const devicePropertyDescription = propertyDef?.description || ''
 
         // Decode current value using property's codec if available
-        let currentValueDecoded = currentValueRaw
+        let currentValueDecoded: number | bigint | string = currentValueRaw
         if (propertyDef && propertyDef.codec) {
-            const codec = propertyDef.codec as any
-            if (codec && typeof codec === 'object') {
-                codec.baseCodecs = this.baseCodecs
-            }
-            const decodedResult = codec.decode(currentValueBytes, 0)
+            // Get codec instance from builder
+            const codecInstance = typeof propertyDef.codec === 'function'
+                ? propertyDef.codec(this.baseCodecs)
+                : propertyDef.codec
+            const decodedResult = codecInstance.decode(currentValueBytes, 0)
             currentValueDecoded = decodedResult.value
         }
 
-        let minimumValue: any = undefined
-        let maximumValue: any = undefined
-        let stepSize: any = undefined
+        let minimumValue: number | bigint | string | undefined = undefined
+        let maximumValue: number | bigint | string | undefined = undefined
+        let stepSize: number | bigint | string | undefined = undefined
         let numberOfValues: number | undefined = undefined
-        let supportedValuesRaw: any[] | undefined = undefined
-        let supportedValuesDecoded: any[] | undefined = undefined
+        let supportedValuesRaw: (number | bigint | string)[] | undefined = undefined
+        let supportedValuesDecoded: (number | bigint | string)[] | undefined = undefined
 
         // Handle form field based on FormFlag
         if (formFlag === 0x01) {
@@ -132,23 +141,26 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
             currentOffset += stepResult.bytesRead
 
             // Decode range values if codec available
-            if (propertyDef && propertyDef.codec) {
-                const codec = propertyDef.codec as any
-                if (codec && typeof codec === 'object') {
-                    codec.baseCodecs = this.baseCodecs
-                }
+            if (propertyDef && propertyDef.codec && minimumValue !== undefined && maximumValue !== undefined && stepSize !== undefined) {
+                // Get codec instance from builder
+                const codecInstance = typeof propertyDef.codec === 'function'
+                    ? propertyDef.codec(this.baseCodecs)
+                    : propertyDef.codec
 
                 const datatypeDefinition = getDatatypeByCode(dataType)
                 if (datatypeDefinition?.codec) {
-                    const datatypeCodec = this.resolveBaseCodec(datatypeDefinition.codec)
+                    // Get datatype codec instance
+                    const datatypeCodec = typeof datatypeDefinition.codec === 'function'
+                        ? datatypeDefinition.codec(this.baseCodecs)
+                        : datatypeDefinition.codec
 
                     const minBytes = datatypeCodec.encode(minimumValue)
                     const maxBytes = datatypeCodec.encode(maximumValue)
                     const stepBytes = datatypeCodec.encode(stepSize)
 
-                    minimumValue = codec.decode(minBytes, 0).value
-                    maximumValue = codec.decode(maxBytes, 0).value
-                    stepSize = codec.decode(stepBytes, 0).value
+                    minimumValue = codecInstance.decode(minBytes, 0).value
+                    maximumValue = codecInstance.decode(maxBytes, 0).value
+                    stepSize = codecInstance.decode(stepBytes, 0).value
                 }
             }
         } else if (formFlag === 0x02) {
@@ -166,19 +178,22 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
 
             // Decode enum values using property's codec if available
             supportedValuesDecoded = supportedValuesRaw
-            if (propertyDef && propertyDef.codec && supportedValuesRaw.length > 0) {
-                const codec = propertyDef.codec as any
-                if (codec && typeof codec === 'object') {
-                    codec.baseCodecs = this.baseCodecs
-                }
+            if (propertyDef && propertyDef.codec && supportedValuesRaw && supportedValuesRaw.length > 0) {
+                // Get codec instance from builder
+                const codecInstance = typeof propertyDef.codec === 'function'
+                    ? propertyDef.codec(this.baseCodecs)
+                    : propertyDef.codec
 
                 const datatypeDefinition = getDatatypeByCode(dataType)
                 if (datatypeDefinition?.codec) {
-                    const datatypeCodec = this.resolveBaseCodec(datatypeDefinition.codec)
+                    // Get datatype codec instance
+                    const datatypeCodec = typeof datatypeDefinition.codec === 'function'
+                        ? datatypeDefinition.codec(this.baseCodecs)
+                        : datatypeDefinition.codec
 
-                    supportedValuesDecoded = supportedValuesRaw.map((rawVal: any) => {
+                    supportedValuesDecoded = supportedValuesRaw.map((rawVal) => {
                         const bytes = datatypeCodec.encode(rawVal)
-                        const decoded = codec.decode(bytes, 0)
+                        const decoded = codecInstance.decode(bytes, 0)
                         return decoded.value
                     })
                 }
@@ -210,7 +225,5 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
 }
 
 // Standard codec for 2-byte property codes (ISO standard)
-export const devicePropDescCodec = new DevicePropDescCodec(false)
 
 // Extended codec for 4-byte property codes (Nikon extended)
-export const devicePropDescCodecEx = new DevicePropDescCodec(true)

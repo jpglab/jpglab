@@ -1,3 +1,4 @@
+import { OperationDefinition } from '@ptp/types/operation'
 import { TransportInterface, PTPEvent } from '@transport/interfaces/transport.interface'
 import { DeviceDescriptor } from '@transport/interfaces/device.interface'
 import { TransportType } from '@transport/interfaces/transport-types'
@@ -42,7 +43,7 @@ export class USBTransport implements TransportInterface {
     private usb: USB | null = null
     private isListeningForEvents = false
 
-    constructor(private logger: Logger<any>) {}
+    constructor(private logger: Logger) {}
 
     private async getUSB(): Promise<USB> {
         if (this.usb) return this.usb
@@ -75,8 +76,8 @@ export class USBTransport implements TransportInterface {
         this.isListeningForEvents = false
         const usb = await this.getUSB()
 
-        let usbDevice = id?.vendorId && id.vendorId !== 0
-            ? (await this.discover(id))[0]?.device as USBDevice
+        let usbDevice: USBDevice | undefined = id?.vendorId && id.vendorId !== 0
+            ? (await this.discover(id))[0]?.device
             : undefined
 
         if (!usbDevice) {
@@ -142,10 +143,13 @@ export class USBTransport implements TransportInterface {
             phase: container.type === USBContainerType.COMMAND ? 'request' : container.type === USBContainerType.DATA ? 'data' : 'response',
         })
 
-        let result = await this.device.transferOut(endpoint, buffer.buffer as ArrayBuffer)
+        const arrayBuffer: ArrayBuffer = buffer.buffer instanceof SharedArrayBuffer
+            ? (() => { const ab = new ArrayBuffer(buffer.buffer.byteLength); new Uint8Array(ab).set(new Uint8Array(buffer.buffer)); return ab; })()
+            : buffer.buffer
+        let result = await this.device.transferOut(endpoint, arrayBuffer)
         if (result.status === 'stall') {
             await this.clearStall(EndpointType.BULK_OUT)
-            result = await this.device.transferOut(endpoint, buffer.buffer as ArrayBuffer)
+            result = await this.device.transferOut(endpoint, arrayBuffer)
         }
         if (result.status !== 'ok') throw new Error(`Bulk OUT failed: ${result.status}`)
     }
@@ -163,7 +167,10 @@ export class USBTransport implements TransportInterface {
 
         if (result.status !== 'ok' || !result.data || result.data.byteLength === 0) throw new Error(`Bulk IN failed: ${result.status}`)
 
-        const data = toUint8Array(result.data.buffer as ArrayBuffer)
+        const dataBuffer: ArrayBuffer = result.data.buffer instanceof SharedArrayBuffer
+            ? (() => { const ab = new ArrayBuffer(result.data!.buffer.byteLength); new Uint8Array(ab).set(new Uint8Array(result.data!.buffer)); return ab; })()
+            : result.data.buffer
+        const data = toUint8Array(dataBuffer)
         const container = USBContainerBuilder.parseContainer(data)
 
         this.logger.addLog({
@@ -299,7 +306,7 @@ export class USBTransport implements TransportInterface {
                 else if (result.status === 'ok' && result.data?.byteLength) (this.handleInterruptData(new Uint8Array(result.data.buffer)), restart())
                 else restart()
             })
-            .catch((error: unknown) => {
+            .catch((error: Error | string) => {
                 const msg = error instanceof Error ? error.message : String(error)
                 if (!msg.includes('LIBUSB_TRANSFER_CANCELLED') && this.isListeningForEvents) restart()
             })

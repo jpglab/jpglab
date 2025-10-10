@@ -12,13 +12,13 @@ export interface StorageInfo {
 }
 
 export class StorageInfoCodec extends CustomCodec<StorageInfo> {
-    readonly type = 'custom' as const
+    
 
     encode(value: StorageInfo): Uint8Array {
-        const u16 = this.resolveBaseCodec(baseCodecs.uint16)
-        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
-        const u64 = this.resolveBaseCodec(baseCodecs.uint64)
-        const str = this.resolveBaseCodec(baseCodecs.string)
+        const u16 = this.baseCodecs.uint16
+        const u32 = this.baseCodecs.uint32
+        const u64 = this.baseCodecs.uint64
+        const str = this.baseCodecs.string
 
         const buffers: Uint8Array[] = []
 
@@ -43,10 +43,10 @@ export class StorageInfoCodec extends CustomCodec<StorageInfo> {
     }
 
     decode(buffer: Uint8Array, offset = 0): { value: StorageInfo; bytesRead: number } {
-        const u16 = this.resolveBaseCodec(baseCodecs.uint16)
-        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
-        const u64 = this.resolveBaseCodec(baseCodecs.uint64)
-        const str = this.resolveBaseCodec(baseCodecs.string)
+        const u16 = this.baseCodecs.uint16
+        const u32 = this.baseCodecs.uint32
+        const u64 = this.baseCodecs.uint64
+        const str = this.baseCodecs.string
 
         let currentOffset = offset
 
@@ -90,4 +90,3 @@ export class StorageInfoCodec extends CustomCodec<StorageInfo> {
     }
 }
 
-export const storageInfoCodec = new StorageInfoCodec()

@@ -1,9 +1,8 @@
-import { OperationDefinition } from '@ptp/types/operation'
-import { OperationName, OperationParamsObject, GetOperation } from '@camera/generic-camera'
-import { CodecType } from '@ptp/types/codec'
 import { LoggerConfig, defaultLoggerConfig } from './logger-config'
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+type DecodedData = number | bigint | string | Uint8Array | object | number[] | null | undefined
 
 type BaseLog = {
     id: number
@@ -11,19 +10,16 @@ type BaseLog = {
     level: LogLevel
 }
 
-type PTPOperationLog<
-    Ops extends readonly OperationDefinition[],
-    N extends OperationName<Ops> = OperationName<Ops>,
-> = BaseLog & {
+type PTPOperationLog = BaseLog & {
     type: 'ptp_operation'
     sessionId: number
     transactionId: number
 
     requestPhase: {
         timestamp: number
-        operationName: N
+        operationName: string
         encodedParams?: Uint8Array[]
-        decodedParams: OperationParamsObject<GetOperation<N, Ops>>
+        decodedParams: Record<string, number | bigint | string | object>
     }
 
     dataPhase?: {
@@ -31,11 +27,7 @@ type PTPOperationLog<
         direction: 'in' | 'out'
         bytes: number
         encodedData?: Uint8Array
-        decodedData?: GetOperation<N, Ops>['dataCodec'] extends infer C
-            ? C extends { type: any }
-                ? CodecType<C>
-                : unknown
-            : unknown
+        decodedData?: DecodedData
         maxDataLength?: number
     }
 
@@ -60,13 +52,10 @@ type USBTransferLog = BaseLog & {
 type ConsoleLog = BaseLog & {
     type: 'console'
     consoleLevel: 'log' | 'error' | 'info' | 'warn'
-    args: any[]
+    args: (number | bigint | string | boolean | null | undefined | object)[]
 }
 
-type PTPTransferLog<
-    Ops extends readonly OperationDefinition[],
-    N extends OperationName<Ops> = OperationName<Ops>,
-> = PTPOperationLog<Ops, N> & {
+type PTPTransferLog = Omit<PTPOperationLog, 'type'> & {
     type: 'ptp_transfer'
     objectHandle: number
     totalBytes: number
@@ -79,17 +68,17 @@ type PTPTransferLog<
     }>
 }
 
-type Log<Ops extends readonly OperationDefinition[]> =
-    | PTPOperationLog<Ops>
-    | USBTransferLog
-    | PTPTransferLog<Ops>
-    | ConsoleLog
+type Log = PTPOperationLog | USBTransferLog | PTPTransferLog | ConsoleLog
 
 // Before adding to logger (no id/timestamp yet)
-type NewLog<Ops extends readonly OperationDefinition[]> = Omit<Log<Ops>, 'id' | 'timestamp'>
+type NewLog =
+    | Omit<PTPOperationLog, 'id' | 'timestamp'>
+    | Omit<USBTransferLog, 'id' | 'timestamp'>
+    | Omit<PTPTransferLog, 'id' | 'timestamp'>
+    | Omit<ConsoleLog, 'id' | 'timestamp'>
 
-export class Logger<Ops extends readonly OperationDefinition[] = readonly OperationDefinition[]> {
-    private logs: Map<string, Log<Ops>[]> = new Map() // key: "sessionId:transactionId"
+export class Logger {
+    private logs: Map<string, Log[]> = new Map() // key: "sessionId:transactionId"
     private orderedTransactions: Array<{
         key: string // "sessionId:transactionId"
         timestamp: number // earliest timestamp in this transaction
@@ -98,7 +87,7 @@ export class Logger<Ops extends readonly OperationDefinition[] = readonly Operat
     private nextId: number = 1
     private changeListeners: Array<() => void> = []
     private notifyTimeout: NodeJS.Timeout | null = null
-    private inkInstance: any = null
+    private inkInstance: { unmount: () => void; waitUntilExit: () => Promise<void> } | null = null
     private activeTransfers: Map<number, number> = new Map() // objectHandle -> logId
     private originalConsole = {
         log: console.log.bind(console),
@@ -119,14 +108,14 @@ export class Logger<Ops extends readonly OperationDefinition[] = readonly Operat
 
     private captureConsole() {
         const createWrapper = (consoleLevel: 'log' | 'error' | 'info' | 'warn') => {
-            return (...args: any[]) => {
+            return (...args: (number | bigint | string | boolean | null | undefined | object)[]) => {
                 // Add to logger as a console log entry
                 this.addLog({
                     type: 'console',
                     level: 'info',
                     consoleLevel,
                     args,
-                } as Omit<ConsoleLog, 'id' | 'timestamp'>)
+                })
             }
         }
 
@@ -145,7 +134,7 @@ export class Logger<Ops extends readonly OperationDefinition[] = readonly Operat
                         import('./renderers/ink-simple')
                             .then(({ InkSimpleLogger }) => {
                                 this.inkInstance = render(
-                                    React.createElement(InkSimpleLogger, { logger: this as any }),
+                                    React.createElement(InkSimpleLogger, { logger: this }),
                                     { patchConsole: false }
                                 )
                             })
@@ -183,31 +172,45 @@ export class Logger<Ops extends readonly OperationDefinition[] = readonly Operat
         return `${sessionId}:${transactionId}`
     }
 
-    addLog(log: Omit<PTPOperationLog<Ops>, 'id' | 'timestamp'>): number
-    addLog(log: Omit<USBTransferLog, 'id' | 'timestamp'>): number
-    addLog(log: Omit<ConsoleLog, 'id' | 'timestamp'>): number
-    addLog(log: NewLog<Ops>): number {
+    addLog(log: NewLog): number {
         const id = this.nextId++
         const timestamp = Date.now()
-        const fullLog = { ...log, id, timestamp } as Log<Ops>
 
         // Console logs don't have sessionId/transactionId, handle separately
         if (log.type === 'console') {
-            // Store console logs with a special key
+            const consoleLog: ConsoleLog = { ...log, id, timestamp }
             const key = `console:${id}`
-            this.logs.set(key, [fullLog])
+            this.logs.set(key, [consoleLog])
             this.orderedTransactions.push({ key, timestamp })
-        } else {
-            const key = this.getKey((log as any).sessionId, (log as any).transactionId)
+        } else if (log.type === 'ptp_operation') {
+            const ptpLog: PTPOperationLog = Object.assign({}, log, { id, timestamp })
+            const key = this.getKey(log.sessionId, log.transactionId)
             const existing = this.logs.get(key)
-
             if (!existing) {
-                // New transaction
-                this.logs.set(key, [fullLog])
+                this.logs.set(key, [ptpLog])
                 this.orderedTransactions.push({ key, timestamp })
             } else {
-                // Add to existing transaction
-                existing.push(fullLog)
+                existing.push(ptpLog)
+            }
+        } else if (log.type === 'ptp_transfer') {
+            const transferLog: PTPTransferLog = Object.assign({}, log, { id, timestamp })
+            const key = this.getKey(log.sessionId, log.transactionId)
+            const existing = this.logs.get(key)
+            if (!existing) {
+                this.logs.set(key, [transferLog])
+                this.orderedTransactions.push({ key, timestamp })
+            } else {
+                existing.push(transferLog)
+            }
+        } else if (log.type === 'usb_transfer') {
+            const usbLog: USBTransferLog = Object.assign({}, log, { id, timestamp })
+            const key = this.getKey(log.sessionId, log.transactionId)
+            const existing = this.logs.get(key)
+            if (!existing) {
+                this.logs.set(key, [usbLog])
+                this.orderedTransactions.push({ key, timestamp })
+            } else {
+                existing.push(usbLog)
             }
         }
 
@@ -216,12 +219,12 @@ export class Logger<Ops extends readonly OperationDefinition[] = readonly Operat
         return id
     }
 
-    updateLog(id: number, updates: Partial<Log<Ops>>): number {
+    updateLog(id: number, updates: Partial<Log>): number {
         // Find log by ID across all transactions
         for (const logs of this.logs.values()) {
             const index = logs.findIndex(l => l.id === id)
             if (index !== -1) {
-                logs[index] = { ...logs[index], ...updates } as Log<Ops>
+                logs[index] = Object.assign({}, logs[index], updates)
                 this.notifyChange()
                 break
             }
@@ -229,11 +232,11 @@ export class Logger<Ops extends readonly OperationDefinition[] = readonly Operat
         return id
     }
 
-    getLogs(): Log<Ops>[] {
+    getLogs(): Log[] {
         return Array.from(this.logs.values()).flat()
     }
 
-    getLogById(id: number): Log<Ops> | undefined {
+    getLogById(id: number): Log | undefined {
         for (const logs of this.logs.values()) {
             const found = logs.find(l => l.id === id)
             if (found) return found
@@ -241,7 +244,7 @@ export class Logger<Ops extends readonly OperationDefinition[] = readonly Operat
         return undefined
     }
 
-    getLogsByTransaction(sessionId: number, transactionId: number): Log<Ops>[] {
+    getLogsByTransaction(sessionId: number, transactionId: number): Log[] {
         return this.logs.get(this.getKey(sessionId, transactionId)) || []
     }
 

@@ -1,12 +1,46 @@
 import { CustomCodec, ArrayCodec, baseCodecs } from '@ptp/types/codec'
-import { operationDefinitions } from '@ptp/definitions/operation-definitions'
-import { sonyOperationDefinitions } from '@ptp/definitions/vendors/sony/sony-operation-definitions'
-import { nikonOperationDefinitions } from '@ptp/definitions/vendors/nikon/nikon-operation-definitions'
-import { eventDefinitions } from '@ptp/definitions/event-definitions'
-import { sonyEventDefinitions } from '@ptp/definitions/vendors/sony/sony-event-definitions'
-import { formatDefinitions } from '@ptp/definitions/format-definitions'
-import { sonyFormatDefinitions } from '@ptp/definitions/vendors/sony/sony-format-definitions'
-import { propertyDefinitions } from '@ptp/definitions/property-definitions'
+
+// Lazy-loaded registries to avoid circular dependency
+let _operationRegistry: any = null
+let _propertyRegistry: any = null
+let _eventRegistry: any = null
+let _formatRegistry: any = null
+
+function getOperationRegistry() {
+    if (!_operationRegistry) {
+        const { genericOperationRegistry } = require('@ptp/definitions/operation-definitions')
+        const { sonyOperationRegistry } = require('@ptp/definitions/vendors/sony/sony-operation-definitions')
+        const { nikonOperationRegistry } = require('@ptp/definitions/vendors/nikon/nikon-operation-definitions')
+        _operationRegistry = [...Object.values(genericOperationRegistry), ...Object.values(sonyOperationRegistry), ...Object.values(nikonOperationRegistry)]
+    }
+    return _operationRegistry
+}
+
+function getPropertyRegistry() {
+    if (!_propertyRegistry) {
+        const { genericPropertyRegistry } = require('@ptp/definitions/property-definitions')
+        _propertyRegistry = Object.values(genericPropertyRegistry)
+    }
+    return _propertyRegistry
+}
+
+function getEventRegistry() {
+    if (!_eventRegistry) {
+        const { genericEventRegistry } = require('@ptp/definitions/event-definitions')
+        const { sonyEventRegistry } = require('@ptp/definitions/vendors/sony/sony-event-definitions')
+        _eventRegistry = [...Object.values(genericEventRegistry), ...Object.values(sonyEventRegistry)]
+    }
+    return _eventRegistry
+}
+
+function getFormatRegistry() {
+    if (!_formatRegistry) {
+        const { formatRegistry } = require('@ptp/definitions/format-definitions')
+        const { sonyFormatRegistry } = require('@ptp/definitions/vendors/sony/sony-format-definitions')
+        _formatRegistry = [...Object.values(formatRegistry), ...Object.values(sonyFormatRegistry)]
+    }
+    return _formatRegistry
+}
 
 export interface DeviceInfo {
     standardVersion: number
@@ -30,15 +64,12 @@ export interface DeviceInfo {
 }
 
 export class DeviceInfoCodec extends CustomCodec<DeviceInfo> {
-    readonly type = 'custom' as const
-
     encode(value: DeviceInfo): Uint8Array {
-        const u16 = this.resolveBaseCodec(baseCodecs.uint16)
-        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
-        const str = this.resolveBaseCodec(baseCodecs.string)
+        const u16 = this.baseCodecs.uint16
+        const u32 = this.baseCodecs.uint32
+        const str = this.baseCodecs.string
 
-        const arrU16 = new ArrayCodec(baseCodecs.uint16)
-        arrU16.baseCodecs = this.baseCodecs
+        const arrU16 = new ArrayCodec(this.baseCodecs, this.baseCodecs.uint16)
 
         const buffers: Uint8Array[] = []
 
@@ -69,12 +100,11 @@ export class DeviceInfoCodec extends CustomCodec<DeviceInfo> {
     }
 
     decode(buffer: Uint8Array, offset = 0): { value: DeviceInfo; bytesRead: number } {
-        const u16 = this.resolveBaseCodec(baseCodecs.uint16)
-        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
-        const str = this.resolveBaseCodec(baseCodecs.string)
+        const u16 = this.baseCodecs.uint16
+        const u32 = this.baseCodecs.uint32
+        const str = this.baseCodecs.string
 
-        const arrU16 = new ArrayCodec(baseCodecs.uint16)
-        arrU16.baseCodecs = this.baseCodecs
+        const arrU16 = new ArrayCodec(this.baseCodecs, this.baseCodecs.uint16)
 
         let currentOffset = offset
 
@@ -120,30 +150,31 @@ export class DeviceInfoCodec extends CustomCodec<DeviceInfo> {
         const serialNumber = str.decode(buffer, currentOffset)
         currentOffset += serialNumber.bytesRead
 
-        // Decode operation codes to names
-        const allOperations = [...operationDefinitions, ...sonyOperationDefinitions, ...nikonOperationDefinitions]
+        // Decode operation codes to names (lazy-loaded)
+        const allOperations = getOperationRegistry()
         const operationsSupportedDecoded = operationsSupported.value.map(code => {
-            const op = allOperations.find(o => o.code === code)
+            const op = allOperations.find((o: any) => o.code === code)
             return op?.name || `Unknown_0x${code.toString(16)}`
         })
 
-        // Decode property codes to names
+        // Decode property codes to names (lazy-loaded)
+        const propertyDefinitions = getPropertyRegistry()
         const devicePropertiesSupportedDecoded = devicePropertiesSupported.value.map(code => {
-            const prop = propertyDefinitions.find(p => p.code === code)
+            const prop = propertyDefinitions.find((p: any) => p.code === code)
             return prop?.name || `Unknown_0x${code.toString(16)}`
         })
 
-        // Decode event codes to names
-        const allEvents = [...eventDefinitions, ...sonyEventDefinitions]
+        // Decode event codes to names (lazy-loaded)
+        const allEvents = getEventRegistry()
         const eventsSupportedDecoded = eventsSupported.value.map(code => {
-            const evt = allEvents.find(e => e.code === code)
+            const evt = allEvents.find((e: any) => e.code === code)
             return evt?.name || `Unknown_0x${code.toString(16)}`
         })
 
-        // Decode image format codes to names
-        const allFormats = [...formatDefinitions, ...sonyFormatDefinitions]
+        // Decode image format codes to names (lazy-loaded)
+        const allFormats = getFormatRegistry()
         const imageFormatsDecoded = imageFormats.value.map(code => {
-            const fmt = allFormats.find(f => f.code === code)
+            const fmt = allFormats.find((f: any) => f.code === code)
             return fmt?.name || `Unknown_0x${code.toString(16)}`
         })
 
@@ -173,4 +204,3 @@ export class DeviceInfoCodec extends CustomCodec<DeviceInfo> {
     }
 }
 
-export const deviceInfoCodec = new DeviceInfoCodec()

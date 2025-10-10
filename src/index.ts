@@ -1,6 +1,5 @@
 // Main protocol implementation
 export { GenericCamera } from '@camera/generic-camera'
-export type { OperationName, PropertyName, PropertyValue, PTPEventData } from '@camera/generic-camera'
 
 // Core type definitions
 export * from '@ptp/types/codec'
@@ -11,19 +10,23 @@ export * from '@ptp/types/parameter'
 export * from '@ptp/types/property'
 export * from '@ptp/types/response'
 
-// Definition arrays (single source of truth)
-export * from '@ptp/definitions/datatype-definitions'
-export * from '@ptp/definitions/operation-definitions'
-export * from '@ptp/definitions/property-definitions'
-export * from '@ptp/definitions/event-definitions'
-export * from '@ptp/definitions/response-definitions'
-export * from '@ptp/definitions/format-definitions'
+// Definition registries (single source of truth)
+export { getDatatypeByCode } from '@ptp/definitions/datatype-definitions'
+export { genericOperationRegistry } from '@ptp/definitions/operation-definitions'
+export { genericPropertyRegistry } from '@ptp/definitions/property-definitions'
+export { genericEventRegistry } from '@ptp/definitions/event-definitions'
+export { responseRegistry } from '@ptp/definitions/response-definitions'
+export { formatRegistry } from '@ptp/definitions/format-definitions'
 
 // Data sets (PTP datasets with codecs)
 export * from '@ptp/datasets/device-info-dataset'
 export * from '@ptp/datasets/object-info-dataset'
 export * from '@ptp/datasets/storage-info-dataset'
 
-// Vendor extensions
-export * from '@ptp/definitions/vendors/sony/sony-operation-definitions'
-export * from '@ptp/definitions/vendors/sony/sony-property-definitions'
+// Vendor extension registries
+export { sonyOperationRegistry } from '@ptp/definitions/vendors/sony/sony-operation-definitions'
+export { sonyPropertyRegistry } from '@ptp/definitions/vendors/sony/sony-property-definitions'
+export { sonyEventRegistry } from '@ptp/definitions/vendors/sony/sony-event-definitions'
+export { sonyFormatRegistry } from '@ptp/definitions/vendors/sony/sony-format-definitions'
+export { sonyResponseRegistry } from '@ptp/definitions/vendors/sony/sony-response-definitions'
+export { nikonOperationRegistry } from '@ptp/definitions/vendors/nikon/nikon-operation-definitions'

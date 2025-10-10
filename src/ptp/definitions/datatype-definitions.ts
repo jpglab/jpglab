@@ -72,61 +72,61 @@ export const datatypeDefinitions = [
         code: 0x4001,
         name: 'AINT8',
         description: 'Array of signed 8-bit integers',
-        codec: new ArrayCodec(baseCodecs.int8),
+        codec: (bc) => new ArrayCodec(bc, bc.int8),
     },
     {
         code: 0x4002,
         name: 'AUINT8',
         description: 'Array of unsigned 8-bit integers',
-        codec: new ArrayCodec(baseCodecs.uint8),
+        codec: (bc) => new ArrayCodec(bc, bc.uint8),
     },
     {
         code: 0x4003,
         name: 'AINT16',
         description: 'Array of signed 16-bit integers',
-        codec: new ArrayCodec(baseCodecs.int16),
+        codec: (bc) => new ArrayCodec(bc, bc.int16),
     },
     {
         code: 0x4004,
         name: 'AUINT16',
         description: 'Array of unsigned 16-bit integers',
-        codec: new ArrayCodec(baseCodecs.uint16),
+        codec: (bc) => new ArrayCodec(bc, bc.uint16),
     },
     {
         code: 0x4005,
         name: 'AINT32',
         description: 'Array of signed 32-bit integers',
-        codec: new ArrayCodec(baseCodecs.int32),
+        codec: (bc) => new ArrayCodec(bc, bc.int32),
     },
     {
         code: 0x4006,
         name: 'AUINT32',
         description: 'Array of unsigned 32-bit integers',
-        codec: new ArrayCodec(baseCodecs.uint32),
+        codec: (bc) => new ArrayCodec(bc, bc.uint32),
     },
     {
         code: 0x4007,
         name: 'AINT64',
         description: 'Array of signed 64-bit integers',
-        codec: new ArrayCodec(baseCodecs.int64),
+        codec: (bc) => new ArrayCodec(bc, bc.int64),
     },
     {
         code: 0x4008,
         name: 'AUINT64',
         description: 'Array of unsigned 64-bit integers',
-        codec: new ArrayCodec(baseCodecs.uint64),
+        codec: (bc) => new ArrayCodec(bc, bc.uint64),
     },
     {
         code: 0x4009,
         name: 'AINT128',
         description: 'Array of signed 128-bit integers',
-        codec: new ArrayCodec(baseCodecs.uint8),
+        codec: (bc) => new ArrayCodec(bc, bc.uint8),
     },
     {
         code: 0x400a,
         name: 'AUINT128',
         description: 'Array of unsigned 128-bit integers',
-        codec: new ArrayCodec(baseCodecs.uint8),
+        codec: (bc) => new ArrayCodec(bc, bc.uint8),
     },
     {
         code: 0xffff,
@@ -136,14 +136,14 @@ export const datatypeDefinitions = [
     },
 ] as const satisfies readonly DatatypeDefinition[]
 
-export const datatypesByCode = new Map(datatypeDefinitions.map(dt => [dt.code, dt]))
+export const datatypesByCode: Map<number, DatatypeDefinition> = new Map(datatypeDefinitions.map(dt => [dt.code, dt]))
 
-export const datatypesByName = new Map(datatypeDefinitions.map(dt => [dt.name, dt]))
+export const datatypesByName: Map<string, DatatypeDefinition> = new Map(datatypeDefinitions.map(dt => [dt.name, dt]))
 
 export function getDatatypeByCode(code: number): DatatypeDefinition | undefined {
-    return datatypesByCode.get(code as any)
+    return datatypesByCode.get(code)
 }
 
 export function getDatatypeByName(name: string): DatatypeDefinition | undefined {
-    return datatypesByName.get(name as any)
+    return datatypesByName.get(name)
 }

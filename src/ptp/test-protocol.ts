@@ -4,11 +4,23 @@
  */
 
 import { GenericCamera } from '@camera/generic-camera'
+import { genericOperationRegistry } from '@ptp/definitions/operation-definitions'
+import { genericPropertyRegistry } from '@ptp/definitions/property-definitions'
+import { responseRegistry } from '@ptp/definitions/response-definitions'
+import { formatRegistry } from '@ptp/definitions/format-definitions'
+
+const operationDefinitions = Object.values(genericOperationRegistry)
+const propertyDefinitions = Object.values(genericPropertyRegistry)
+const responseDefinitions = Object.values(responseRegistry)
+const formatDefinitions = Object.values(formatRegistry)
+
+import type { TransportInterface } from '@transport/interfaces/transport.interface'
+import type { Logger } from '@core/logger'
 
 // Mock transport
-declare const mockTransport: any
-declare const mockLogger: any
-const camera = new GenericCamera(mockTransport, mockLogger)
+declare const mockTransport: TransportInterface
+declare const mockLogger: Logger
+const camera = new GenericCamera(mockTransport, mockLogger, operationDefinitions, propertyDefinitions, responseDefinitions, formatDefinitions)
 
 async function testAutomaticTypeInference() {
     console.log('Testing automatic type inference from definitions...\n')
@@ -48,19 +60,19 @@ async function testAutomaticTypeInference() {
     const imageSize: string = await camera.get('ImageSize')
     const dateTime: string = await camera.get('DateTime')
     const artist: string = await camera.get('Artist')
-    const exposureTime: number = await camera.get('ExposureTime')
+    const exposureTime: string = await camera.get('ExposureTime')
 
     // Set requires correct type based on codec in definition
-    await camera.set('ExposureTime', 1000)
+    await camera.set('ExposureTime', '1/250')
     await camera.set('ImageSize', '1920x1080')
     await camera.set('Artist', 'John Doe')
     await camera.set('DateTime', '2024-01-15T10:30:00')
-    await camera.set('FNumber', 28)
+    await camera.set('FNumber', 'f/2.8')
 
     // ✅ Events - names automatically validated from event-definitions.ts
 
     camera.on('ObjectAdded', event => {
-        console.log('Object added:', event.parameters)
+        console.log('Object added:', event)
     })
 
     camera.on('CaptureComplete', event => {

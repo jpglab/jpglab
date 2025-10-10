@@ -1,6 +1,16 @@
 import { CustomCodec, baseCodecs } from '@ptp/types/codec'
-import { formatDefinitions } from '@ptp/definitions/format-definitions'
-import { sonyFormatDefinitions } from '@ptp/definitions/vendors/sony/sony-format-definitions'
+
+// Lazy-loaded registry to avoid circular dependency
+let _formatRegistry: any = null
+
+function getFormatRegistry() {
+    if (!_formatRegistry) {
+        const { formatRegistry } = require('@ptp/definitions/format-definitions')
+        const { sonyFormatRegistry } = require('@ptp/definitions/vendors/sony/sony-format-definitions')
+        _formatRegistry = [...Object.values(formatRegistry), ...Object.values(sonyFormatRegistry)]
+    }
+    return _formatRegistry
+}
 
 export interface ObjectInfo {
     storageID: number
@@ -27,12 +37,12 @@ export interface ObjectInfo {
 }
 
 export class ObjectInfoCodec extends CustomCodec<ObjectInfo> {
-    readonly type = 'custom' as const
+    
 
     encode(value: ObjectInfo): Uint8Array {
-        const u16 = this.resolveBaseCodec(baseCodecs.uint16)
-        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
-        const str = this.resolveBaseCodec(baseCodecs.string)
+        const u16 = this.baseCodecs.uint16
+        const u32 = this.baseCodecs.uint32
+        const str = this.baseCodecs.string
 
         const buffers: Uint8Array[] = []
 
@@ -70,9 +80,9 @@ export class ObjectInfoCodec extends CustomCodec<ObjectInfo> {
     }
 
     decode(buffer: Uint8Array, offset = 0): { value: ObjectInfo; bytesRead: number } {
-        const u16 = this.resolveBaseCodec(baseCodecs.uint16)
-        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
-        const str = this.resolveBaseCodec(baseCodecs.string)
+        const u16 = this.baseCodecs.uint16
+        const u32 = this.baseCodecs.uint32
+        const str = this.baseCodecs.string
 
         let currentOffset = offset
 
@@ -133,12 +143,12 @@ export class ObjectInfoCodec extends CustomCodec<ObjectInfo> {
         const keywords = str.decode(buffer, currentOffset)
         currentOffset += keywords.bytesRead
 
-        // Decode format codes to names
-        const allFormats = [...formatDefinitions, ...sonyFormatDefinitions]
-        const objectFormatDef = allFormats.find(f => f.code === objectFormat.value)
+        // Decode format codes to names (lazy-loaded)
+        const allFormats = getFormatRegistry()
+        const objectFormatDef = allFormats.find((f: any) => f.code === objectFormat.value)
         const objectFormatDecoded = objectFormatDef?.name || `Unknown_0x${objectFormat.value.toString(16)}`
 
-        const thumbFormatDef = allFormats.find(f => f.code === thumbFormat.value)
+        const thumbFormatDef = allFormats.find((f: any) => f.code === thumbFormat.value)
         const thumbFormatDecoded = thumbFormatDef?.name || (thumbFormat.value === 0 ? 'None' : `Unknown_0x${thumbFormat.value.toString(16)}`)
 
         return {
@@ -170,4 +180,3 @@ export class ObjectInfoCodec extends CustomCodec<ObjectInfo> {
     }
 }
 
-export const objectInfoCodec = new ObjectInfoCodec()

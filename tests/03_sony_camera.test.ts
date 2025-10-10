@@ -5,11 +5,13 @@ import { Logger } from '@core/logger'
 import * as fs from 'fs'
 import * as path from 'path'
 import { VendorIDs } from '@ptp/definitions/vendor-ids'
+import * as Props from '@ptp/definitions/property-definitions'
+import * as SonyProps from '@ptp/definitions/vendors/sony/sony-property-definitions'
 
 describe('SonyCamera', () => {
     let transport: any
     let camera: SonyCamera
-    let logger: Logger<any>
+    let logger: Logger
     let outputDir: string
     let connected = false
 
@@ -69,19 +71,19 @@ describe('SonyCamera', () => {
     })
 
     it('should get current ISO', async () => {
-        const iso = await camera.get('Iso')
+        const iso = await camera.get(SonyProps.Iso)
         expect(iso).toBeDefined()
         console.log(`  Current ISO: ${iso}`)
     })
 
     it('should get current shutter speed', async () => {
-        const shutterSpeed = await camera.get('ShutterSpeed')
+        const shutterSpeed = await camera.get(SonyProps.ShutterSpeed)
         expect(shutterSpeed).toBeDefined()
         console.log(`  Current shutter speed: ${shutterSpeed}`)
     })
 
     it('should get current aperture', async () => {
-        const aperture = await camera.get('Aperture')
+        const aperture = await camera.get(SonyProps.Aperture)
         expect(aperture).toBeDefined()
         console.log(`  Current aperture: ${aperture}`)
     })
@@ -121,8 +123,8 @@ describe('SonyCamera', () => {
     }, 2000)
 
     it('should handle multiple operations in sequence', async () => {
-        const iso1 = await camera.get('Iso')
-        const iso2 = await camera.get('Iso')
+        const iso1 = await camera.get(SonyProps.Iso)
+        const iso2 = await camera.get(SonyProps.Iso)
         expect(iso1).toEqual(iso2)
 
         console.log('✅ Sequential operations completed successfully')

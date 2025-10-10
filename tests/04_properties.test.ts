@@ -3,11 +3,13 @@ import { SonyCamera } from '../src/camera/sony-camera'
 import { TransportFactory } from '@transport/transport-factory'
 import { Logger } from '@core/logger'
 import { VendorIDs } from '@ptp/definitions/vendor-ids'
+import * as Props from '@ptp/definitions/property-definitions'
+import * as SonyProps from '@ptp/definitions/vendors/sony/sony-property-definitions'
 
 describe('Sony Property Formats', () => {
     let camera: SonyCamera
     let transport: any
-    let logger: Logger<any>
+    let logger: Logger
 
     beforeAll(async () => {
         const transportFactory = new TransportFactory()
@@ -49,9 +51,9 @@ describe('Sony Property Formats', () => {
 
         apertureTests.forEach(({ input, expected }) => {
             it(`should normalize "${input}" to "${expected}"`, async () => {
-                await camera.set('Aperture', input)
+                await camera.set(SonyProps.Aperture, input)
                 await delay(400)
-                const result = await camera.get('Aperture')
+                const result = await camera.get(SonyProps.Aperture)
                 expect(result).toBe(expected)
             })
         })
@@ -72,9 +74,9 @@ describe('Sony Property Formats', () => {
 
         isoTests.forEach(({ input, expected }) => {
             it(`should normalize "${input}" to "${expected}"`, async () => {
-                await camera.set('Iso', input)
+                await camera.set(SonyProps.Iso, input)
                 await delay(400)
-                const result = await camera.get('Iso')
+                const result = await camera.get(SonyProps.Iso)
                 expect(result).toBe(expected)
             })
         })
@@ -111,9 +113,9 @@ describe('Sony Property Formats', () => {
 
         shutterTests.forEach(({ input, expected }) => {
             it(`should normalize "${input}" to "${expected}"`, async () => {
-                await camera.set('ShutterSpeed', input)
+                await camera.set(SonyProps.ShutterSpeed, input)
                 await delay(400)
-                const result = await camera.get('ShutterSpeed')
+                const result = await camera.get(SonyProps.ShutterSpeed)
                 expect(result).toBe(expected)
             })
         })

@@ -1,17 +1,30 @@
 export type BaseCodecType = 'int8' | 'uint8' | 'int16' | 'uint16' | 'int32' | 'uint32' | 'int64' | 'uint64' | 'string'
 export type CustomCodecType = 'enum' | 'range' | 'array' | 'custom'
 
-export type CodecDefinition<T> =
-    | {
-          type: BaseCodecType
-          encode?(value: T): Uint8Array
-          decode?(buffer: Uint8Array, offset?: number): { value: T; bytesRead: number }
-      }
-    | {
-          type: CustomCodecType
-          encode(value: T): Uint8Array
-          decode(buffer: Uint8Array, offset?: number): { value: T; bytesRead: number }
-      }
+// Codec instance interface
+export interface CodecInstance<T> {
+    encode(value: T): Uint8Array
+    decode(buffer: Uint8Array, offset?: number): { value: T; bytesRead: number }
+}
+
+// Base codec registry type
+export interface BaseCodecRegistry {
+    readonly int8: CodecInstance<number>
+    readonly uint8: CodecInstance<number>
+    readonly int16: CodecInstance<number>
+    readonly uint16: CodecInstance<number>
+    readonly int32: CodecInstance<number>
+    readonly uint32: CodecInstance<number>
+    readonly int64: CodecInstance<bigint>
+    readonly uint64: CodecInstance<bigint>
+    readonly string: CodecInstance<string>
+}
+
+// Codec builder function type - receives base codecs and returns codec instance
+export type CodecBuilder<T> = (baseCodecs: BaseCodecRegistry) => CodecInstance<T>
+
+// Codec definition can be either a builder function or an instance (for backwards compat)
+export type CodecDefinition<T> = CodecBuilder<T> | CodecInstance<T>
 
 export type EnumValue<T> = {
     value: T
@@ -19,44 +32,21 @@ export type EnumValue<T> = {
     description: string
 }
 
-export class CustomCodec<T> {
-    readonly type: CustomCodecType | BaseCodecType = 'custom' as const
-    public baseCodecs?: ReturnType<typeof createBaseCodecs>
+// Base class for custom codecs - receives baseCodecs in constructor
+export abstract class CustomCodec<T> implements CodecInstance<T> {
+    constructor(public readonly baseCodecs: BaseCodecRegistry) {}
 
-    public resolveBaseCodec<U>(codec: CodecDefinition<U>): { encode: (value: U) => Uint8Array; decode: (buffer: Uint8Array, offset?: number) => { value: U; bytesRead: number } } {
-        if (!this.baseCodecs) {
-            throw new Error('CustomCodec baseCodecs not bound - cannot resolve')
-        }
-
-        if ('encode' in codec && codec.encode && 'decode' in codec && codec.decode) {
-            return codec as any
-        }
-
-        const standardType = codec.type as BaseCodecType
-        const impl = this.baseCodecs[standardType as keyof typeof this.baseCodecs]
-        if (!impl) {
-            throw new Error(`Unknown standard codec type: ${standardType}`)
-        }
-        return impl as any
-    }
-
-    encode(value: T): Uint8Array {
-        throw new Error('CustomCodec encode not implemented - must be overridden in subclass')
-    }
-
-    decode(buffer: Uint8Array, offset = 0): { value: T; bytesRead: number } {
-        throw new Error('CustomCodec decode not implemented - must be overridden in subclass')
-    }
+    abstract encode(value: T): Uint8Array
+    abstract decode(buffer: Uint8Array, offset?: number): { value: T; bytesRead: number }
 }
 
 export class EnumCodec<T> extends CustomCodec<T | string> {
-    readonly type = 'enum' as const
     private readonly valueToName = new Map<T, EnumValue<T>>()
     private readonly nameToValue = new Map<string, EnumValue<T>>()
-    private readonly baseCodec: CodecDefinition<T>
+    private readonly baseCodec: CodecInstance<T>
 
-    constructor(values: EnumValue<T>[], baseCodec: CodecDefinition<T>) {
-        super()
+    constructor(baseCodecs: BaseCodecRegistry, values: EnumValue<T>[], baseCodec: CodecInstance<T>) {
+        super(baseCodecs)
         this.baseCodec = baseCodec
         for (const enumValue of values) {
             this.valueToName.set(enumValue.value, enumValue)
@@ -65,25 +55,23 @@ export class EnumCodec<T> extends CustomCodec<T | string> {
     }
 
     encode(value: T | string): Uint8Array {
-        const resolved = this.resolveBaseCodec(this.baseCodec)
         // If value is a string, look it up by name
         if (typeof value === 'string') {
             const enumValue = this.nameToValue.get(value)
             if (!enumValue) {
                 throw new Error(`Invalid enum name: ${value}`)
             }
-            return resolved.encode(enumValue.value)
+            return this.baseCodec.encode(enumValue.value)
         }
         // Otherwise, treat it as the raw value
         if (!this.valueToName.has(value)) {
             throw new Error(`Invalid enum value: ${value}`)
         }
-        return resolved.encode(value)
+        return this.baseCodec.encode(value)
     }
 
     decode(buffer: Uint8Array, offset = 0): { value: string; bytesRead: number } {
-        const resolved = this.resolveBaseCodec(this.baseCodec)
-        const result = resolved.decode(buffer, offset)
+        const result = this.baseCodec.decode(buffer, offset)
         const enumValue = this.valueToName.get(result.value)
         if (!enumValue) {
             throw new Error(`Invalid enum value: ${result.value}`)
@@ -111,18 +99,16 @@ export interface RangeSpec<T> {
 }
 
 export class RangeCodec<T extends number> extends CustomCodec<T> {
-    readonly type = 'range' as const
     private readonly range: RangeSpec<T>
-    private readonly baseCodec: CodecDefinition<T>
+    private readonly baseCodec: CodecInstance<T>
 
-    constructor(range: RangeSpec<T>, baseCodec: CodecDefinition<T>) {
-        super()
+    constructor(baseCodecs: BaseCodecRegistry, range: RangeSpec<T>, baseCodec: CodecInstance<T>) {
+        super(baseCodecs)
         this.range = range
         this.baseCodec = baseCodec
     }
 
     encode(value: T): Uint8Array {
-        const resolved = this.resolveBaseCodec(this.baseCodec)
         if (value < this.range.minimum || value > this.range.maximum) {
             throw new Error(`Value ${value} out of range [${this.range.minimum}, ${this.range.maximum}]`)
         }
@@ -132,12 +118,11 @@ export class RangeCodec<T extends number> extends CustomCodec<T> {
             throw new Error(`Value ${value} not aligned to step ${this.range.step}`)
         }
 
-        return resolved.encode(value)
+        return this.baseCodec.encode(value)
     }
 
     decode(buffer: Uint8Array, offset = 0): { value: T; bytesRead: number } {
-        const resolved = this.resolveBaseCodec(this.baseCodec)
-        const result = resolved.decode(buffer, offset)
+        const result = this.baseCodec.decode(buffer, offset)
 
         if (result.value < this.range.minimum || result.value > this.range.maximum) {
             throw new Error(`Decoded value ${result.value} out of range [${this.range.minimum}, ${this.range.maximum}]`)
@@ -388,24 +373,21 @@ export class StringCodec {
 }
 
 export class ArrayCodec<T> extends CustomCodec<T[]> {
-    readonly type = 'array' as const
-    private readonly elementCodec: CodecDefinition<T>
+    private readonly elementCodec: CodecInstance<T>
 
-    constructor(elementCodec: CodecDefinition<T>) {
-        super()
+    constructor(baseCodecs: BaseCodecRegistry, elementCodec: CodecInstance<T>) {
+        super(baseCodecs)
         this.elementCodec = elementCodec
     }
 
     encode(values: T[]): Uint8Array {
-        const resolved = this.resolveBaseCodec(this.elementCodec)
-        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
         const buffers: Uint8Array[] = []
 
         // Use uint32 codec from baseCodecs to get correct endianness
-        buffers.push(u32.encode(values.length))
+        buffers.push(this.baseCodecs.uint32.encode(values.length))
 
         for (const value of values) {
-            buffers.push(resolved.encode(value))
+            buffers.push(this.elementCodec.encode(value))
         }
 
         const totalLength = buffers.reduce((sum, buf) => sum + buf.length, 0)
@@ -420,22 +402,19 @@ export class ArrayCodec<T> extends CustomCodec<T[]> {
     }
 
     decode(buffer: Uint8Array, offset = 0): { value: T[]; bytesRead: number } {
-        const resolved = this.resolveBaseCodec(this.elementCodec)
-        const u32 = this.resolveBaseCodec(baseCodecs.uint32)
-
         if (buffer.length - offset < 4) {
             throw new Error('Insufficient buffer size for array length')
         }
 
         // Use uint32 codec from baseCodecs to get correct endianness
-        const lengthResult = u32.decode(buffer, offset)
+        const lengthResult = this.baseCodecs.uint32.decode(buffer, offset)
         const length = lengthResult.value
 
         const values: T[] = []
         let currentOffset = offset + lengthResult.bytesRead
 
         for (let i = 0; i < length; i++) {
-            const result = resolved.decode(buffer, currentOffset)
+            const result = this.elementCodec.decode(buffer, currentOffset)
             values.push(result.value)
             currentOffset += result.bytesRead
         }
@@ -447,19 +426,21 @@ export class ArrayCodec<T> extends CustomCodec<T[]> {
     }
 }
 
+// Builder functions for base codecs - definitions use these
 export const baseCodecs = {
-    int8: { type: 'int8' as const } as CodecDefinition<number>,
-    uint8: { type: 'uint8' as const } as CodecDefinition<number>,
-    int16: { type: 'int16' as const } as CodecDefinition<number>,
-    uint16: { type: 'uint16' as const } as CodecDefinition<number>,
-    int32: { type: 'int32' as const } as CodecDefinition<number>,
-    uint32: { type: 'uint32' as const } as CodecDefinition<number>,
-    int64: { type: 'int64' as const } as CodecDefinition<bigint>,
-    uint64: { type: 'uint64' as const } as CodecDefinition<bigint>,
-    string: { type: 'string' as const } as CodecDefinition<string>,
+    int8: (bc: BaseCodecRegistry) => bc.int8,
+    uint8: (bc: BaseCodecRegistry) => bc.uint8,
+    int16: (bc: BaseCodecRegistry) => bc.int16,
+    uint16: (bc: BaseCodecRegistry) => bc.uint16,
+    int32: (bc: BaseCodecRegistry) => bc.int32,
+    uint32: (bc: BaseCodecRegistry) => bc.uint32,
+    int64: (bc: BaseCodecRegistry) => bc.int64,
+    uint64: (bc: BaseCodecRegistry) => bc.uint64,
+    string: (bc: BaseCodecRegistry) => bc.string,
 } as const
 
-export function createBaseCodecs(littleEndian: boolean) {
+// Create actual codec instances based on endianness
+export function createBaseCodecs(littleEndian: boolean): BaseCodecRegistry {
     return {
         int8: new Int8Codec(),
         uint8: new Uint8Codec(),
@@ -474,36 +455,23 @@ export function createBaseCodecs(littleEndian: boolean) {
 }
 
 /**
- * Type inference from codec instances
- * This allows us to infer TypeScript types from codec instances
+ * Type inference from codec definitions (builders or instances)
+ * This allows us to infer TypeScript types from codec definitions
  */
 export type CodecType<T> =
-    T extends CodecDefinition<infer U>
-        ? U
-        : T extends Uint8Codec
-          ? number
-          : T extends Uint16Codec
-            ? number
-            : T extends Uint32Codec
-              ? number
-              : T extends Uint64Codec
-                ? bigint
-                : T extends Int8Codec
-                  ? number
-                  : T extends Int16Codec
-                    ? number
-                    : T extends Int32Codec
-                      ? number
-                      : T extends Int64Codec
-                        ? bigint
-                        : T extends StringCodec
-                          ? string
-                          : T extends ArrayCodec<infer E>
-                            ? E[]
-                            : T extends EnumCodec<infer V>
-                              ? V
-                              : T extends RangeCodec<infer N>
-                                ? N
-                                : T extends CustomCodec<infer C>
-                                  ? C
-                                  : any
+    T extends CodecBuilder<infer U> ? U :
+    T extends CodecInstance<infer U> ? U :
+    T extends Uint8Codec ? number :
+    T extends Uint16Codec ? number :
+    T extends Uint32Codec ? number :
+    T extends Uint64Codec ? bigint :
+    T extends Int8Codec ? number :
+    T extends Int16Codec ? number :
+    T extends Int32Codec ? number :
+    T extends Int64Codec ? bigint :
+    T extends StringCodec ? string :
+    T extends ArrayCodec<infer E> ? E[] :
+    T extends EnumCodec<infer V> ? V :
+    T extends RangeCodec<infer N> ? N :
+    T extends CustomCodec<infer C> ? C :
+    never

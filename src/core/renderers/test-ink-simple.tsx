@@ -3,12 +3,14 @@ import React from 'react'
 import { render } from 'ink'
 import { Logger } from '../logger'
 import { InkSimpleLogger } from './ink-simple'
-import { operationDefinitions } from '../../ptp/definitions/operation-definitions'
+import { genericOperationRegistry } from '../../ptp/definitions/operation-definitions'
 import { populateMockData } from './mock-data'
+
+const operationDefinitions = Object.values(genericOperationRegistry)
 
 async function main() {
     // Create logger
-    const logger = new Logger<typeof operationDefinitions>({
+    const logger = new Logger({
         minLevel: 'debug',
         collapse: false,
         expandOnError: true,

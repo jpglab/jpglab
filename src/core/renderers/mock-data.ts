@@ -1,5 +1,7 @@
 import { Logger, NewLog } from '../logger'
-import { operationDefinitions } from '../../ptp/definitions/operation-definitions'
+import { genericOperationRegistry } from '../../ptp/definitions/operation-definitions'
+
+const operationDefinitions = Object.values(genericOperationRegistry)
 
 // Timing constants
 const PHASE_DURATION = 500 // Time between phases (request → data → response)
@@ -7,7 +9,7 @@ const OPERATION_GAP = 500 // Time between operations
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
-export async function populateMockData(logger: Logger<typeof operationDefinitions>) {
+export async function populateMockData(logger: Logger) {
     const sessionId = 0x00012345
     let transactionId = 1
 
@@ -19,7 +21,7 @@ export async function populateMockData(logger: Logger<typeof operationDefinition
         transactionId,
         requestPhase: {
             timestamp: Date.now(),
-            operationName: 'OpenSession' as const,
+            operationName: 'OpenSession',
             encodedParams: [new Uint8Array([0x45, 0x23, 0x01, 0x00])],
             decodedParams: {
                 SessionID: sessionId,

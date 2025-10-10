@@ -30,14 +30,14 @@ export class TransportFactory {
      * @param type - Transport type
      * @param options - Transport options
      */
-    async create(type: TransportType, options?: unknown): Promise<TransportInterface> {
+    async create(type: TransportType, options?: USBTransportOptions | IPTransportOptions): Promise<TransportInterface> {
         switch (type) {
             case TransportType.USB:
-                return await this.createUSBTransport(options as USBTransportOptions)
+                return await this.createUSBTransport(options)
             case TransportType.IP:
-                return await this.createIPTransport(options as IPTransportOptions)
+                if (!options || !("address" in options)) throw new Error("IP transport requires address"); return await this.createIPTransport(options)
             default:
-                throw new Error(`Unknown transport type: ${type as string}`)
+                const exhaustive: never = type; throw new Error(`Unknown transport type: ${exhaustive}`)
         }
     }
 

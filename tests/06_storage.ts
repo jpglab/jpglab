@@ -1,13 +1,12 @@
 import { SonyCamera } from '@camera/sony-camera'
 import { Logger } from '@core/logger'
 import { USBTransport } from '@transport/usb/usb-transport'
-import { sonyOperationDefinitions } from '@ptp/definitions/vendors/sony/sony-operation-definitions'
-import { operationDefinitions as standardOperationDefinitions } from '@ptp/definitions/operation-definitions'
+import * as Ops from '@ptp/definitions/operation-definitions'
+import * as SonyOps from '@ptp/definitions/vendors/sony/sony-operation-definitions'
+import * as SonyProps from '@ptp/definitions/vendors/sony/sony-property-definitions'
 import { ObjectInfo } from 'src'
 
-const mergedOperationDefinitions = [...standardOperationDefinitions, ...sonyOperationDefinitions] as const
-
-const logger = new Logger<typeof mergedOperationDefinitions>({
+const logger = new Logger({
     collapseUSB: false, // Show USB transfer details for debugging
     collapse: false, // Show all details
 })
@@ -36,42 +35,42 @@ async function main() {
     })
 
     // test sony ext-device-prop-info dataset
-    const iso = await camera.get('Iso')
-    const shutterSpeed = await camera.get('ShutterSpeed')
-    const aperture = await camera.get('Aperture')
+    const iso = await camera.get(SonyProps.Iso)
+    const shutterSpeed = await camera.get(SonyProps.ShutterSpeed)
+    const aperture = await camera.get(SonyProps.Aperture)
 
     // test device-info dataset
-    const deviceInfo = await camera.send('GetDeviceInfo', {})
+    const deviceInfo = await camera.send(Ops.GetDeviceInfo, {})
 
     // enable live view
-    await camera.set('SetLiveViewEnable', 'ENABLE')
+    await camera.set(SonyProps.SetLiveViewEnable, 'ENABLE')
 
-    await camera.send('SDIO_SetContentsTransferMode', {
+    await camera.send(SonyOps.SDIO_SetContentsTransferMode, {
         ContentsSelectType: 'HOST',
         TransferMode: 'ENABLE',
         AdditionalInformation: 'NONE',
     })
-    
-    while ((await camera.get('ContentTransferEnable')) === 'DISABLE') {
+
+    while ((await camera.get(SonyProps.ContentTransferEnable)) === 'DISABLE') {
         console.log('waiting...')
         await new Promise(resolve => setTimeout(resolve, 10))
     }
 
-    const storageIds = await camera.send('GetStorageIDs', {})
+    const storageIds = await camera.send(Ops.GetStorageIDs, {})
 
     // test storage-info dataset
-    const storageInfo = await camera.send('GetStorageInfo', {
+    const storageInfo = await camera.send(Ops.GetStorageInfo, {
         StorageID: storageIds.data[0],
     })
 
-    const objectIds = await camera.send('GetObjectHandles', {
+    const objectIds = await camera.send(Ops.GetObjectHandles, {
         StorageID: storageIds.data[0],
     })
 
     const objectInfos: { [ObjectHandle: number]: ObjectInfo } = {}
 
     for await (const objectId of objectIds.data) {
-        const objectInfo = await camera.send('GetObjectInfo', {
+        const objectInfo = await camera.send(Ops.GetObjectInfo, {
             ObjectHandle: objectId,
         })
         objectInfos[objectId] = objectInfo.data
@@ -110,7 +109,7 @@ async function main() {
             const offsetUpper = Math.floor(offset / 0x100000000) // Divide by 2^32 to get upper 32 bits
 
             const chunkResponse = await camera.send(
-                'SDIO_GetPartialLargeObject',
+                SonyOps.SDIO_GetPartialLargeObject,
                 {
                     ObjectHandle: objectId,
                     OffsetLower: offsetLower,
@@ -139,7 +138,7 @@ async function main() {
         fs.writeFileSync(outputPath, completeFile)
     }
 
-    await camera.send('SDIO_SetContentsTransferMode', {
+    await camera.send(SonyOps.SDIO_SetContentsTransferMode, {
         ContentsSelectType: 'HOST',
         TransferMode: 'DISABLE',
         AdditionalInformation: 'NONE',

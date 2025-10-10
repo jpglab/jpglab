@@ -1,13 +1,22 @@
+import { genericOperationRegistry } from '@ptp/definitions/operation-definitions'
+import { genericPropertyRegistry } from '@ptp/definitions/property-definitions'
+import { responseRegistry } from '@ptp/definitions/response-definitions'
+import { formatRegistry } from '@ptp/definitions/format-definitions'
 import { describe, it, expect, afterAll } from 'vitest'
 import { GenericCamera } from '../src/camera/generic-camera'
 import { TransportFactory } from '@transport/transport-factory'
 import { TransportInterface } from '@transport/interfaces/transport.interface'
 import { Logger } from '@core/logger'
 
+const operationDefinitions = Object.values(genericOperationRegistry)
+const propertyDefinitions = Object.values(genericPropertyRegistry)
+const responseDefinitions = Object.values(responseRegistry)
+const formatDefinitions = Object.values(formatRegistry)
+
 describe('GenericCamera', () => {
     let transport: TransportInterface
-    let camera: GenericCamera<any, any, any, any>
-    let logger: Logger<any>
+    let camera: GenericCamera
+    let logger: Logger
 
     afterAll(async () => {
         if (camera && transport && transport.isConnected()) {

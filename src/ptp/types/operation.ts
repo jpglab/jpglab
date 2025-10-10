@@ -3,12 +3,12 @@ import { CodecDefinition } from '@ptp/types/codec';
 
 export type DataDirection = 'none' | 'in' | 'out';
 
-export interface OperationDefinition {
+export interface OperationDefinition<T = number | bigint | string | object | Uint8Array | number[]> {
     code: number;
     name: string;
     description: string;
     dataDirection: DataDirection;
-    dataCodec?: CodecDefinition<any>;
+    dataCodec?: CodecDefinition<T>;
     operationParameters: [
         ParameterDefinition?,
         ParameterDefinition?,

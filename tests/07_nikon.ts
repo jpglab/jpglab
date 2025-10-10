@@ -1,17 +1,14 @@
 import { Logger } from '@core/logger'
 import { USBTransport } from '@transport/usb/usb-transport'
-import { operationDefinitions as standardOperationDefinitions } from '@ptp/definitions/operation-definitions'
-import { nikonOperationDefinitions } from '@ptp/definitions/vendors/nikon/nikon-operation-definitions'
+import * as Ops from '@ptp/definitions/operation-definitions'
+import * as Props from '@ptp/definitions/property-definitions'
+import * as NikonOps from '@ptp/definitions/vendors/nikon/nikon-operation-definitions'
 
-import { GenericCamera } from 'src'
-// import { NikonCamera } from '@camera/nikon-camera'
-import { SonyCamera } from '@camera/sony-camera'
 import { NikonCamera } from '@camera/nikon-camera'
 
-const mergedOperationDefinitions = [...standardOperationDefinitions, ...nikonOperationDefinitions] as const
 const capturedImagesDir = '/Users/kevinschaich/repositories/jpglab/fuse/captured_images'
 
-const logger = new Logger<typeof mergedOperationDefinitions>({
+const logger = new Logger({
     collapseUSB: false, // Show USB transfer details for debugging
     collapse: false, // Show all details
     showDecodedData: true,
@@ -28,10 +25,10 @@ const camera = new NikonCamera(transport, logger)
 async function main() {
     await camera.connect()
 
-    const deviceInfo = await camera.send('GetDeviceInfo', {})
-    const exposureTime = await camera.get('ExposureTime')
-    const exposureIndex = await camera.get('ExposureIndex')
-    const fNumber = await camera.get('FNumber')
+    const deviceInfo = await camera.send(Ops.GetDeviceInfo, {})
+    const exposureTime = await camera.get(Props.ExposureTime)
+    const exposureIndex = await camera.get(Props.ExposureIndex)
+    const fNumber = await camera.get(Props.FNumber)
 
     // Register event handlers to see what events come through
     camera.on('ObjectAdded', event => {
@@ -42,23 +39,23 @@ async function main() {
         console.log('✅ CaptureComplete event:', event)
     })
 
-    const capture = await camera.send('InitiateCapture', {})
+    const capture = await camera.send(Ops.InitiateCapture, {})
 
     // wait 1 second for the events to fire
     await new Promise(resolve => setTimeout(resolve, 1000))
 
     // Get storage IDs
-    const storageIds = await camera.send('GetStorageIDs', {})
+    const storageIds = await camera.send(Ops.GetStorageIDs, {})
     console.log('Storage IDs:', storageIds.data)
 
     // Get storage info for first storage
-    const storageInfo = await camera.send('GetStorageInfo', {
+    const storageInfo = await camera.send(Ops.GetStorageInfo, {
         StorageID: storageIds.data[0],
     })
     console.log('Storage Info:', storageInfo.data)
 
     // Get all object handles
-    const objectIds = await camera.send('GetObjectHandles', {
+    const objectIds = await camera.send(Ops.GetObjectHandles, {
         StorageID: storageIds.data[0],
     })
     console.log(`Found ${objectIds.data.length} objects`)
@@ -67,7 +64,7 @@ async function main() {
     const objectInfos: { [ObjectHandle: number]: any } = {}
 
     for await (const objectId of objectIds.data) {
-        const objectInfo = await camera.send('GetObjectInfo', {
+        const objectInfo = await camera.send(Ops.GetObjectInfo, {
             ObjectHandle: objectId,
         })
         objectInfos[objectId] = objectInfo.data
@@ -112,7 +109,7 @@ async function main() {
             const maxSizeUpper = Math.floor(bytesToRead / 0x100000000)
 
             const chunkResponse = await camera.send(
-                'GetPartialObjectEx',
+                NikonOps.GetPartialObjectEx,
                 {
                     ObjectHandle: objectId,
                     OffsetLower: offsetLower,
@@ -125,13 +122,12 @@ async function main() {
                 offset === 0 ? objectSize + 12 : bytesToRead + 12
             )
 
-            const chunkData = chunkResponse.data as Uint8Array | undefined
-            if (!chunkData) {
+            if (!chunkResponse.data) {
                 throw new Error('No data received from GetPartialObjectEx')
             }
 
-            chunks.push(chunkData)
-            offset += chunkData.length
+            chunks.push(chunkResponse.data)
+            offset += chunkResponse.data.length
         }
 
         // Combine all chunks

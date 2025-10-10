@@ -39,5 +39,5 @@ export interface DeviceDescriptor {
     transportType?: TransportType
 
     // Raw device object (platform-specific, e.g., USBDevice)
-    device?: unknown
+    device?: USBDevice
 }

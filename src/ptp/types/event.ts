@@ -28,7 +28,8 @@ export function isVendorEventCode(code: number): boolean {
  * Works in both Node.js and browser environments
  */
 
-type EventListener = (...args: any[]) => void
+export type EventData = number | string | object | number[]
+type EventListener = (data: EventData) => void
 
 export class EventEmitter {
     private events: Map<string, EventListener[]> = new Map()
@@ -41,11 +42,11 @@ export class EventEmitter {
         return this.removeListener(event, listener)
     }
 
-    emit(event: string, ...args: any[]): boolean {
+    emit(event: string, data: EventData): boolean {
         const listeners = this.events.get(event)
         if (listeners) {
             listeners.forEach(listener => {
-                listener(...args)
+                listener(data)
             })
             return true
         }
@@ -53,9 +54,9 @@ export class EventEmitter {
     }
 
     once(event: string, listener: EventListener): this {
-        const onceWrapper = (...args: any[]) => {
+        const onceWrapper = (data: EventData) => {
             this.removeListener(event, onceWrapper)
-            listener(...args)
+            listener(data)
         }
         return this.on(event, onceWrapper)
     }
