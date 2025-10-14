@@ -87,6 +87,12 @@ export function formatJSON(val: number | bigint | string | boolean | null | unde
         const isLast = idx === entries.length - 1
         const comma = isLast ? '' : ','
 
+        // Special handling for large binary data fields
+        if (value instanceof Uint8Array && value.length > 100) {
+            lines.push(`${baseIndent}  "${key}": <Uint8Array: ${value.length} bytes>${comma}`)
+            return
+        }
+
         if (Array.isArray(value)) {
             if (value.length === 0) {
                 lines.push(`${baseIndent}  "${key}": []${comma}`)

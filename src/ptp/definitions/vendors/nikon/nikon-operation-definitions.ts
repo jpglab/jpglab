@@ -1,6 +1,7 @@
 import { OperationDefinition } from '@ptp/types/operation'
 import { baseCodecs, type PTPRegistry } from '@ptp/types/codec'
 import { DevicePropDescCodec } from '@ptp/datasets/device-prop-desc-dataset'
+import { NikonLiveViewDatasetCodec } from '@ptp/datasets/vendors/nikon/nikon-live-view-dataset'
 
 export const GetPartialObjectEx = {
     code: 0x9431,
@@ -104,11 +105,52 @@ export const SetDevicePropValueEx = {
     responseParameters: [],
 } as const satisfies OperationDefinition
 
+export const DeviceReady = {
+    code: 0x90c8,
+    name: 'DeviceReady',
+    description: 'Check status of activation-type command (e.g. StartLiveView, AfDrive)',
+    dataDirection: 'none',
+    operationParameters: [],
+    responseParameters: [],
+} as const satisfies OperationDefinition
+
+export const StartLiveView = {
+    code: 0x9201,
+    name: 'StartLiveView',
+    description: 'Start remote live view mode (activation-type command)',
+    dataDirection: 'none',
+    operationParameters: [],
+    responseParameters: [],
+} as const satisfies OperationDefinition
+
+export const EndLiveView = {
+    code: 0x9202,
+    name: 'EndLiveView',
+    description: 'End remote live view mode',
+    dataDirection: 'none',
+    operationParameters: [],
+    responseParameters: [],
+} as const satisfies OperationDefinition
+
+export const GetLiveViewImageEx = {
+    code: 0x9428,
+    name: 'GetLiveViewImageEx',
+    description: 'Get live view image with metadata (LiveViewObject with version)',
+    dataDirection: 'out',
+    dataCodec: (registry) => new NikonLiveViewDatasetCodec(registry),
+    operationParameters: [],
+    responseParameters: [],
+} as const satisfies OperationDefinition
+
 export const nikonOperationRegistry = {
     GetPartialObjectEx,
     GetDevicePropDescEx,
     GetDevicePropValueEx,
     SetDevicePropValueEx,
+    DeviceReady,
+    StartLiveView,
+    EndLiveView,
+    GetLiveViewImageEx,
 } as const satisfies { [key: string]: OperationDefinition }
 
 export type NikonOperationDef = typeof nikonOperationRegistry[keyof typeof nikonOperationRegistry]

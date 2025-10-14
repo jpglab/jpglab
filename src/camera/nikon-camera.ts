@@ -18,12 +18,15 @@ import { Logger, PTPTransferLog } from '@core/logger'
 import { VendorIDs } from '@ptp/definitions/vendor-ids'
 import { GenericCamera } from './generic-camera'
 import { OperationParams, OperationResponse } from '@ptp/types/type-helpers'
+import { parseNikonLiveViewDataset } from '@ptp/datasets/vendors/nikon/nikon-live-view-dataset'
+import { ObjectInfo } from '@ptp/datasets/object-info-dataset'
 
 // ============================================================================
 // NikonCamera class
 // ============================================================================
 
 export class NikonCamera extends GenericCamera {
+    private liveViewEnabled = false
     vendorId = VendorIDs.NIKON
     declare protected registry: NikonRegistry
 
@@ -112,5 +115,137 @@ export class NikonCamera extends GenericCamera {
 
         // Emit event parameters as array
         this.emitter.emit(eventDef.name, event.parameters)
+    }
+
+    /**
+     * Start live view mode
+     * Uses Nikon's StartLiveView activation command and DeviceReady polling
+     */
+    async startLiveView(): Promise<void> {
+        // Issue StartLiveView command
+        await this.send(this.registry.operations.StartLiveView, {})
+
+        // Poll DeviceReady until camera is ready
+        let retries = 0
+        const maxRetries = 50 // Max 5 seconds with 100ms delays
+
+        while (retries < maxRetries) {
+            const readyResponse = await this.send(this.registry.operations.DeviceReady, {})
+
+            // 0x2001 = OK, camera is ready
+            if (readyResponse.code === 0x2001) {
+                this.liveViewEnabled = true
+                return
+            }
+
+            // 0x2019 = Device_Busy, keep polling
+            if (readyResponse.code === 0x2019) {
+                await new Promise(resolve => setTimeout(resolve, 100))
+                retries++
+                continue
+            }
+
+            // Any other response code indicates an error
+            throw new Error(
+                `Failed to start live view: DeviceReady returned code 0x${readyResponse.code.toString(16)}`
+            )
+        }
+
+        throw new Error('Timeout waiting for live view to start')
+    }
+
+    /**
+     * Stop live view mode
+     */
+    async stopLiveView(): Promise<void> {
+        await this.send(this.registry.operations.EndLiveView, {})
+        this.liveViewEnabled = false
+    }
+
+    /**
+     * Capture single live view frame
+     * Returns both metadata and image data
+     */
+    async captureLiveView(): Promise<{ data: Uint8Array; metadata: any } | null> {
+        if (!this.liveViewEnabled) {
+            await this.startLiveView()
+        }
+
+        const response = await this.send(this.registry.operations.GetLiveViewImageEx, {})
+
+        if (!response.data) {
+            return null
+        }
+
+        const liveViewData = parseNikonLiveViewDataset(response.data, this.registry)
+
+        return liveViewData.liveViewImage
+            ? {
+                  data: liveViewData.liveViewImage,
+                  metadata: {
+                      version: { major: liveViewData.majorVersion, minor: liveViewData.minorVersion },
+                      dimensions: liveViewData.liveViewImageImageSize,
+                      wholeSize: liveViewData.wholeSize,
+                      displayAreaSize: liveViewData.displayAreaSize,
+                      focus: {
+                          afDrivingEnabled: liveViewData.afDrivingEnabled,
+                          focusDrivingStatus: liveViewData.focusDrivingStatus,
+                          focusingJudgementResult: liveViewData.focusingJudgementResult,
+                          afModeState: liveViewData.afModeState,
+                          afAreaNumber: liveViewData.afAreaNumber,
+                          selectedSubjectIndex: liveViewData.selectedSubjectIndex,
+                          trackingState: liveViewData.trackingState,
+                          afFrameSize: liveViewData.afFrameSize,
+                          afFrameCenterCoords: liveViewData.afFrameCenterCoords,
+                      },
+                      video: {
+                          videoRecordingInfo: liveViewData.videoRecordingInfo,
+                          remainingTime: liveViewData.remainingVideoTime,
+                          elapsedTime: liveViewData.elapsedVideoTime,
+                          syncRecordingState: liveViewData.syncRecordingState,
+                      },
+                      rotation: liveViewData.rotation,
+                      levelAngle: {
+                          rolling: liveViewData.levelAngleRolling,
+                          pitching: liveViewData.levelAnglePitching,
+                          yawing: liveViewData.levelAngleYawing,
+                      },
+                  },
+              }
+            : null
+    }
+
+    /**
+     * Stream live view frames (returns raw image data only)
+     */
+    async streamLiveView(): Promise<Uint8Array> {
+        if (!this.liveViewEnabled) {
+            await this.startLiveView()
+        }
+
+        const response = await this.send(
+            this.registry.operations.GetLiveViewImageEx,
+            {},
+            undefined,
+            2 * 1024 * 1024 // 2MB buffer for metadata + JPEG
+        )
+
+        if (!response.data) {
+            return new Uint8Array()
+        }
+
+        // Data is already decoded by dataCodec to NikonLiveViewDataset
+        if (typeof response.data === 'object' && 'liveViewImage' in response.data) {
+            const liveViewData = response.data as any
+            return liveViewData.liveViewImage || new Uint8Array()
+        }
+
+        // Fallback: parse manually if still Uint8Array
+        if (response.data instanceof Uint8Array) {
+            const liveViewData = parseNikonLiveViewDataset(response.data, this.registry)
+            return liveViewData.liveViewImage || new Uint8Array()
+        }
+
+        return new Uint8Array()
     }
 }
