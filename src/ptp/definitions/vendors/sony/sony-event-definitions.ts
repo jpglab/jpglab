@@ -1,17 +1,19 @@
+import { FocusIndicationCodec } from '@ptp/definitions/vendors/sony/sony-property-definitions'
+import { baseCodecs } from '@ptp/types/codec'
 import { EventDefinition } from '@ptp/types/event'
 
 export const SDIE_ObjectAdded = {
     code: 0xc201,
     name: 'SDIE_ObjectAdded',
     description: 'Notify that a shot file is ready to transfer',
-    parameters: [{ name: 'ObjectHandle', description: 'Handle of the added object', type: 'ObjectHandle' }],
+    parameters: [{ name: 'ObjectHandle', description: 'Handle of the added object', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_ObjectRemoved = {
     code: 0xc202,
     name: 'SDIE_ObjectRemoved',
     description: 'Notify that a shot file is deleted',
-    parameters: [{ name: 'ObjectHandle', description: 'Handle of the removed object', type: 'ObjectHandle' }],
+    parameters: [{ name: 'ObjectHandle', description: 'Handle of the removed object', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_DevicePropChanged = {
@@ -25,7 +27,7 @@ export const SDIE_DateTimeSettingResult = {
     code: 0xc205,
     name: 'SDIE_DateTimeSettingResult',
     description: 'Notify Date/Time Setting result',
-    parameters: [{ name: 'Setting Result', description: 'Date/Time setting result code', type: 'UINT32' }],
+    parameters: [{ name: 'Setting Result', description: 'Date/Time setting result code', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_CapturedEvent = {
@@ -39,56 +41,58 @@ export const SDIE_CWBCapturedResult = {
     code: 0xc208,
     name: 'SDIE_CWBCapturedResult',
     description: 'Notify the result of Custom WB capture',
-    parameters: [{ name: 'Result', description: 'Custom WB capture result code', type: 'UINT32' }],
+    parameters: [{ name: 'Result', description: 'Custom WB capture result code', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_CameraSettingReadResult = {
     code: 0xc209,
     name: 'SDIE_CameraSettingReadResult',
     description: 'Notify the result of camera-setting read',
-    parameters: [{ name: 'Result', description: 'Camera setting read result code', type: 'UINT32' }],
+    parameters: [{ name: 'Result', description: 'Camera setting read result code', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_FTPSettingReadResult = {
     code: 0xc20a,
     name: 'SDIE_FTPSettingReadResult',
     description: 'Notify the result of FTP-setting read',
-    parameters: [{ name: 'Result', description: 'FTP setting read result code', type: 'UINT32' }],
+    parameters: [{ name: 'Result', description: 'FTP setting read result code', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_MediaFormatResult = {
     code: 0xc20b,
     name: 'SDIE_MediaFormatResult',
     description: 'Notify the result of media format',
-    parameters: [{ name: 'Result', description: 'Media format result code', type: 'UINT32' }],
+    parameters: [{ name: 'Result', description: 'Media format result code', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_ContentsTransferEvent = {
     code: 0xc20d,
     name: 'SDIE_ContentsTransferEvent',
     description: 'Notify that the ContentTransferEvent',
-    parameters: [{ name: 'Event ID', description: 'Contents transfer event ID', type: 'UINT32' }],
+    parameters: [{ name: 'Event ID', description: 'Contents transfer event ID', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_ZoomandFocusPositionEvent = {
     code: 0xc20e,
     name: 'SDIE_ZoomandFocusPositionEvent',
     description: 'Notify the Zoom and Focus Position Event',
-    parameters: [{ name: 'Event ID', description: 'Zoom and focus position event ID', type: 'UINT32' }],
+    parameters: [{ name: 'Event ID', description: 'Zoom and focus position event ID', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_DisplayListChangedEvent = {
     code: 0xc20f,
     name: 'SDIE_DisplayListChangedEvent',
     description: 'Notify an update of DisplayStringList',
-    parameters: [{ name: 'Display String List Type', description: 'Display string list type', type: 'UINT32' }],
+    parameters: [
+        { name: 'Display String List Type', description: 'Display string list type', codec: baseCodecs.uint32 },
+    ],
 } as const satisfies EventDefinition
 
 export const SDIE_MediaProfileChanged = {
     code: 0xc210,
     name: 'SDIE_MediaProfileChanged',
     description: 'Notify that the media profile is changed',
-    parameters: [{ name: 'Media', description: 'Media identifier', type: 'UINT32' }],
+    parameters: [{ name: 'Media', description: 'Media identifier', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_ControlJobListEvent = {
@@ -96,8 +100,8 @@ export const SDIE_ControlJobListEvent = {
     name: 'SDIE_ControlJobListEvent',
     description: 'Notify the Control Job List Event',
     parameters: [
-        { name: 'Result', description: 'Control job list result code', type: 'UINT32' },
-        { name: 'ControlType', description: 'Control type', type: 'UINT32' },
+        { name: 'Result', description: 'Control job list result code', codec: baseCodecs.uint32 },
+        { name: 'ControlType', description: 'Control type', codec: baseCodecs.uint32 },
     ],
 } as const satisfies EventDefinition
 
@@ -113,9 +117,9 @@ export const SDIE_ControlUploadDataResult = {
     name: 'SDIE_ControlUploadDataResult',
     description: 'Notify the result of ControlUpload',
     parameters: [
-        { name: 'Result', description: 'Control upload result code', type: 'UINT32' },
-        { name: 'ControlType', description: 'Control type', type: 'UINT32' },
-        { name: 'OptionParam', description: 'Optional parameter', type: 'UINT32' },
+        { name: 'Result', description: 'Control upload result code', codec: baseCodecs.uint32 },
+        { name: 'ControlType', description: 'Control type', codec: baseCodecs.uint32 },
+        { name: 'OptionParam', description: 'Optional parameter', codec: baseCodecs.uint32 },
     ],
 } as const satisfies EventDefinition
 
@@ -130,14 +134,14 @@ export const SDIE_ZoomPositionResult = {
     code: 0xc217,
     name: 'SDIE_ZoomPositionResult',
     description: 'Notify the zoom position result',
-    parameters: [{ name: 'Result', description: 'Zoom position result code', type: 'UINT32' }],
+    parameters: [{ name: 'Result', description: 'Zoom position result code', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_FocusPositionResult = {
     code: 0xc218,
     name: 'SDIE_FocusPositionResult',
     description: 'Notify the focus position result',
-    parameters: [{ name: 'Result', description: 'Focus position result code', type: 'UINT32' }],
+    parameters: [{ name: 'Result', description: 'Focus position result code', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_LensInformationChangedOld = {
@@ -172,7 +176,7 @@ export const SDIE_FirmwareUpdateCheckResult = {
     code: 0xc21d,
     name: 'SDIE_FirmwareUpdateCheckResult',
     description: 'Firmware update check result',
-    parameters: [{ name: 'Result', description: 'Firmware update check result code', type: 'UINT32' }],
+    parameters: [{ name: 'Result', description: 'Firmware update check result code', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_FirmwareUpdateEvent = {
@@ -180,9 +184,9 @@ export const SDIE_FirmwareUpdateEvent = {
     name: 'SDIE_FirmwareUpdateEvent',
     description: 'Firmware update event',
     parameters: [
-        { name: 'Event ID', description: 'Firmware update event ID', type: 'UINT32' },
-        { name: 'Param1', description: 'Event parameter 1', type: 'UINT32' },
-        { name: 'Param2', description: 'Event parameter 2', type: 'UINT32' },
+        { name: 'Event ID', description: 'Firmware update event ID', codec: baseCodecs.uint32 },
+        { name: 'Param1', description: 'Event parameter 1', codec: baseCodecs.uint32 },
+        { name: 'Param2', description: 'Event parameter 2', codec: baseCodecs.uint32 },
     ],
 } as const satisfies EventDefinition
 
@@ -191,8 +195,8 @@ export const SDIE_StreamStatusEvent = {
     name: 'SDIE_StreamStatusEvent',
     description: 'Notify the stream status event',
     parameters: [
-        { name: 'Stream ID', description: 'Stream identifier', type: 'UINT32' },
-        { name: 'Status', description: 'Stream status', type: 'UINT32' },
+        { name: 'Stream ID', description: 'Stream identifier', codec: baseCodecs.uint32 },
+        { name: 'Status', description: 'Stream status', codec: baseCodecs.uint32 },
     ],
 } as const satisfies EventDefinition
 
@@ -208,9 +212,9 @@ export const SDIE_OperationResults = {
     name: 'SDIE_OperationResults',
     description: 'Notify the operation results',
     parameters: [
-        { name: 'ResultCode', description: 'Operation result code', type: 'UINT32' },
-        { name: 'Result', description: 'Result value', type: 'UINT32' },
-        { name: 'Reserved', description: 'Reserved parameter', type: 'UINT32' },
+        { name: 'ResultCode', description: 'Operation result code', codec: baseCodecs.uint32 },
+        { name: 'Result', description: 'Result value', codec: baseCodecs.uint32 },
+        { name: 'Reserved', description: 'Reserved parameter', codec: baseCodecs.uint32 },
     ],
 } as const satisfies EventDefinition
 
@@ -218,14 +222,20 @@ export const SDIE_AFStatus = {
     code: 0xc223,
     name: 'SDIE_AFStatus',
     description: 'Notify the AF status',
-    parameters: [{ name: 'Status', description: 'Autofocus status (same as Focus Indication 0xD213)', type: 'UINT32' }],
+    parameters: [
+        {
+            name: 'Status',
+            description: 'Autofocus status (same as Focus Indication 0xD213)',
+            codec: FocusIndicationCodec,
+        },
+    ],
 } as const satisfies EventDefinition
 
 export const SDIE_MovieRecOperationResults = {
     code: 0xc224,
     name: 'SDIE_MovieRecOperationResults',
     description: 'Notify the execution results of Movie Rec Operation',
-    parameters: [{ name: 'Results', description: 'Movie recording operation results', type: 'UINT32' }],
+    parameters: [{ name: 'Results', description: 'Movie recording operation results', codec: baseCodecs.uint32 }],
 } as const satisfies EventDefinition
 
 export const SDIE_PresetInfoListChangedOld = {
@@ -254,9 +264,9 @@ export const SDIE_CautionDisplayEvent = {
     name: 'SDIE_CautionDisplayEvent',
     description: 'Notify the CautionDisplayEvent',
     parameters: [
-        { name: 'Reserve', description: 'Reserved parameter 1', type: 'UINT32' },
-        { name: 'Reserve', description: 'Reserved parameter 2', type: 'UINT32' },
-        { name: 'Reserve', description: 'Reserved parameter 3', type: 'UINT32' },
+        { name: 'Reserve', description: 'Reserved parameter 1', codec: baseCodecs.uint32 },
+        { name: 'Reserve', description: 'Reserved parameter 2', codec: baseCodecs.uint32 },
+        { name: 'Reserve', description: 'Reserved parameter 3', codec: baseCodecs.uint32 },
     ],
 } as const satisfies EventDefinition
 
@@ -272,8 +282,8 @@ export const SDIE_ContentInfoListChanged = {
     name: 'SDIE_ContentInfoListChanged',
     description: 'Notify that the ContentInfo List is changed',
     parameters: [
-        { name: 'Slot Info', description: 'Slot information', type: 'UINT32' },
-        { name: 'Event Type', description: 'Event type', type: 'UINT32' },
+        { name: 'Slot Info', description: 'Slot information', codec: baseCodecs.uint32 },
+        { name: 'Event Type', description: 'Event type', codec: baseCodecs.uint32 },
     ],
 } as const satisfies EventDefinition
 
@@ -296,8 +306,8 @@ export const SDIE_ControlPTZFResult = {
     name: 'SDIE_ControlPTZFResult',
     description: 'Notify the ControlPTZF result',
     parameters: [
-        { name: 'Result', description: 'Control PTZF result code', type: 'UINT32' },
-        { name: 'Control Type', description: 'Control type', type: 'UINT32' },
+        { name: 'Result', description: 'Control PTZF result code', codec: baseCodecs.uint32 },
+        { name: 'Control Type', description: 'Control type', codec: baseCodecs.uint32 },
     ],
 } as const satisfies EventDefinition
 
@@ -306,9 +316,9 @@ export const SDIE_PresetPTZFEvent = {
     name: 'SDIE_PresetPTZFEvent',
     description: 'Notify the PresetPTZF Event',
     parameters: [
-        { name: 'Event Type', description: 'Event type', type: 'UINT32' },
-        { name: 'Reserved', description: 'Reserved parameter 1', type: 'UINT32' },
-        { name: 'Reserved', description: 'Reserved parameter 2', type: 'UINT32' },
+        { name: 'Event Type', description: 'Event type', codec: baseCodecs.uint32 },
+        { name: 'Reserved', description: 'Reserved parameter 1', codec: baseCodecs.uint32 },
+        { name: 'Reserved', description: 'Reserved parameter 2', codec: baseCodecs.uint32 },
     ],
 } as const satisfies EventDefinition
 
@@ -317,9 +327,9 @@ export const SDIE_DeleteContentResult = {
     name: 'SDIE_DeleteContentResult',
     description: 'Notify the DeleteContentResult',
     parameters: [
-        { name: 'Result', description: 'Delete content result code', type: 'UINT32' },
-        { name: 'contentID', description: 'Content identifier', type: 'UINT32' },
-        { name: 'Slot Info', description: 'Slot information', type: 'UINT32' },
+        { name: 'Result', description: 'Delete content result code', codec: baseCodecs.uint32 },
+        { name: 'contentID', description: 'Content identifier', codec: baseCodecs.uint32 },
+        { name: 'Slot Info', description: 'Slot information', codec: baseCodecs.uint32 },
     ],
 } as const satisfies EventDefinition
 

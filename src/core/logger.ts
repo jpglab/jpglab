@@ -68,13 +68,23 @@ type PTPTransferLog = Omit<PTPOperationLog, 'type'> & {
     }>
 }
 
-type Log = PTPOperationLog | USBTransferLog | PTPTransferLog | ConsoleLog
+type PTPEventLog = BaseLog & {
+    type: 'ptp_event'
+    sessionId: number
+    eventCode: number
+    eventName: string
+    encodedParams: number[]
+    decodedParams: Record<string, number | bigint | string>
+}
+
+type Log = PTPOperationLog | USBTransferLog | PTPTransferLog | ConsoleLog | PTPEventLog
 
 type NewLog =
     | Omit<PTPOperationLog, 'id' | 'timestamp'>
     | Omit<USBTransferLog, 'id' | 'timestamp'>
     | Omit<PTPTransferLog, 'id' | 'timestamp'>
     | Omit<ConsoleLog, 'id' | 'timestamp'>
+    | Omit<PTPEventLog, 'id' | 'timestamp'>
 
 export class Logger {
     private logs: Map<string, Log[]> = new Map()
@@ -199,6 +209,11 @@ export class Logger {
             } else {
                 existing.push(usbLog)
             }
+        } else if (log.type === 'ptp_event') {
+            const eventLog: PTPEventLog = { ...log, id, timestamp }
+            const key = `event:${log.sessionId}:${id}`
+            this.logs.set(key, [eventLog])
+            this.orderedTransactions.push({ key, timestamp })
         }
 
         this.trimIfNeeded()
@@ -270,4 +285,4 @@ export class Logger {
     }
 }
 
-export type { BaseLog, ConsoleLog, Log, LogLevel, NewLog, PTPOperationLog, PTPTransferLog, USBTransferLog }
+export type { BaseLog, ConsoleLog, Log, LogLevel, NewLog, PTPEventLog, PTPOperationLog, PTPTransferLog, USBTransferLog }

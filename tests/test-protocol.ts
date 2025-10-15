@@ -156,3 +156,49 @@ async function testCompileTimeErrors() {
 
     console.log('✅ All invalid usage caught at compile time!')
 }
+
+async function testEnumTypeInference() {
+    console.log('\nTesting enum type inference...\n')
+
+    // ✅ Properties with enum codecs should return union types, not just string
+    const focusStatus = await sonyCamera.get(sonyCamera.registry.properties.FocusIndication)
+    // focusStatus should be: 'UNLOCK' | 'AF_S_FOCUSED' | 'AF_S_NOT_FOCUSED' | 'AF_C_TRACKING' | 'AF_C_FOCUSED' | ...
+
+    // These should work (valid enum values)
+    if (focusStatus === 'AF_S_FOCUSED') {
+        console.log('Camera is focused (AF-S)')
+    } else if (focusStatus === 'AF_C_FOCUSED') {
+        console.log('Camera is focused (AF-C)')
+    } else if (focusStatus === 'AF_C_TRACKING') {
+        console.log('Camera is tracking subject')
+    }
+
+    // @ts-expect-error - Invalid value that's not in the enum
+    const invalidCheck: typeof focusStatus = 'INVALID_STATUS'
+
+    // ✅ Events with enum codec parameters should have properly typed params
+    sonyCamera.on(sonyCamera.registry.events.SDIE_AFStatus, params => {
+        // params.Status should be the same union type as focus indication enum
+        const status = params.Status
+
+        // These should work (valid enum values)
+        if (status === 'AF_S_FOCUSED') {
+            console.log('AF Status: Focused (AF-S)')
+        } else if (status === 'AF_C_FOCUSED') {
+            console.log('AF Status: Focused (AF-C)')
+        } else if (status === 'AF_C_TRACKING') {
+            console.log('AF Status: Tracking')
+        }
+
+        // @ts-expect-error - Invalid value that's not in the enum
+        const invalid: typeof status = 'INVALID_STATUS'
+    })
+
+    // ✅ Setting enum properties should accept union values
+    await sonyCamera.set(sonyCamera.registry.properties.S1S2Button, 'DOWN')
+    await sonyCamera.set(sonyCamera.registry.properties.S1S2Button, 'UP')
+    // @ts-expect-error - Invalid enum value
+    await sonyCamera.set(sonyCamera.registry.properties.S1S2Button, 'INVALID')
+
+    console.log('✅ Enum types correctly inferred!')
+}

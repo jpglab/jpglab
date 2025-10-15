@@ -1,7 +1,9 @@
-export interface EventParameter {
+import { CodecDefinition } from '@ptp/types/codec'
+
+export interface EventParameter<T = number | bigint | string> {
     name: string
     description: string
-    type: string
+    codec: CodecDefinition<T>
 }
 
 export interface EventDefinition {
@@ -20,21 +22,21 @@ export type EventCode = number
  * Works in both Node.js and browser environments
  */
 
-export type EventData = number | string | object | number[]
-type EventListener = (data: EventData) => void
+export type EventData = number | string | object | number[] | Record<string, any>
+type EventListener<T = EventData> = (data: T) => void
 
 export class EventEmitter {
-    private events: Map<string, EventListener[]> = new Map()
+    private events: Map<string, EventListener<any>[]> = new Map()
 
-    on(event: string, listener: EventListener): this {
+    on<T = EventData>(event: string, listener: EventListener<T>): this {
         return this.addListener(event, listener)
     }
 
-    off(event: string, listener: EventListener): this {
+    off<T = EventData>(event: string, listener: EventListener<T>): this {
         return this.removeListener(event, listener)
     }
 
-    emit(event: string, data: EventData): boolean {
+    emit<T = EventData>(event: string, data: T): boolean {
         const listeners = this.events.get(event)
         if (listeners) {
             listeners.forEach(listener => {
@@ -45,15 +47,15 @@ export class EventEmitter {
         return false
     }
 
-    once(event: string, listener: EventListener): this {
-        const onceWrapper = (data: EventData) => {
+    once<T = EventData>(event: string, listener: EventListener<T>): this {
+        const onceWrapper = (data: T) => {
             this.removeListener(event, onceWrapper)
             listener(data)
         }
         return this.on(event, onceWrapper)
     }
 
-    addListener(event: string, listener: EventListener): this {
+    addListener<T = EventData>(event: string, listener: EventListener<T>): this {
         if (!this.events.has(event)) {
             this.events.set(event, [])
         }
@@ -61,7 +63,7 @@ export class EventEmitter {
         return this
     }
 
-    removeListener(event: string, listener: EventListener): this {
+    removeListener<T = EventData>(event: string, listener: EventListener<T>): this {
         const listeners = this.events.get(event)
         if (listeners) {
             const index = listeners.indexOf(listener)

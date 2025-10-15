@@ -4,9 +4,9 @@ import { VendorIDs } from '@ptp/definitions/vendor-ids'
 import { ISOAutoControl } from '@ptp/definitions/vendors/nikon/nikon-operation-definitions'
 import { createNikonRegistry, type NikonRegistry } from '@ptp/registry'
 import type { CodecType } from '@ptp/types/codec'
-import type { EventData } from '@ptp/types/event'
+import { EventDefinition } from '@ptp/types/event'
 import type { PropertyDefinition } from '@ptp/types/property'
-import { EventNames } from '@ptp/types/type-helpers'
+import { EventParams } from '@ptp/types/type-helpers'
 import { TransportInterface } from '@transport/interfaces/transport.interface'
 import { GenericCamera } from './generic-camera'
 
@@ -60,13 +60,13 @@ export class NikonCamera extends GenericCamera {
         )
     }
 
-    on<E extends { name: string }>(event: E, handler: (event: EventData) => void): void {
-        this.emitter.on(event.name, handler)
+    on<E extends EventDefinition>(event: E, handler: (params: EventParams<E>) => void): void {
+        this.emitter.on<EventParams<E>>(event.name, handler)
     }
 
-    off<E extends { name: string }>(event: E, handler?: (event: EventData) => void): void {
+    off<E extends EventDefinition>(event: E, handler?: (params: EventParams<E>) => void): void {
         if (handler) {
-            this.emitter.off(event.name, handler)
+            this.emitter.off<EventParams<E>>(event.name, handler)
         } else {
             this.emitter.removeAllListeners(event.name)
         }

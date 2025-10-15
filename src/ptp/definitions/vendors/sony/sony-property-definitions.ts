@@ -1,5 +1,5 @@
 import { getDatatypeByName } from '@ptp/definitions/datatype-definitions'
-import { baseCodecs, createEnumCodec, CustomCodec, EnumCodec } from '@ptp/types/codec'
+import { baseCodecs, createEnumCodec, CustomCodec, EnumCodec, PTPRegistry } from '@ptp/types/codec'
 import { PropertyDefinition } from '@ptp/types/property'
 
 const UNDEF = getDatatypeByName('UNDEF')!.code
@@ -1092,28 +1092,30 @@ export const ContentTransferEnable = {
         ),
 } as const satisfies PropertyDefinition
 
+export const FocusIndicationCodec = (registry: PTPRegistry) =>
+    createEnumCodec(
+        registry,
+        [
+            { value: 0x01, name: 'UNLOCK', description: 'Unlock' },
+            { value: 0x02, name: 'AF_S_FOCUSED', description: '[AF-S] Focused and AF Locked State' },
+            { value: 0x03, name: 'AF_S_NOT_FOCUSED', description: '[AF-S] Not Focused and Low Contrast State' },
+            { value: 0x04, name: 'NOT_USED', description: 'Not Used' },
+            { value: 0x05, name: 'AF_C_TRACKING', description: '[AF-C] Tracking Subject motion' },
+            { value: 0x06, name: 'AF_C_FOCUSED', description: '[AF-C] Focused State' },
+            { value: 0x07, name: 'AF_C_NOT_FOCUSED', description: '[AF-C] Not Focused and Low Contrast State' },
+            { value: 0x08, name: 'UNPAUSE', description: 'Unpause' },
+            { value: 0x09, name: 'PAUSE', description: 'Pause' },
+        ] as const,
+        registry.codecs.uint8
+    )
+
 export const FocusIndication = {
     code: 0xd213,
     name: 'FocusIndication',
     description: 'Get the focus indication.',
     datatype: UINT8,
     access: 'Get',
-    codec: registry =>
-        createEnumCodec(
-            registry,
-            [
-                { value: 0x01, name: 'UNLOCK', description: 'Unlock' },
-                { value: 0x02, name: 'AF_S_FOCUSED', description: '[AF-S] Focused and AF Locked State' },
-                { value: 0x03, name: 'AF_S_NOT_FOCUSED', description: '[AF-S] Not Focused and Low Contrast State' },
-                { value: 0x04, name: 'NOT_USED', description: 'Not Used' },
-                { value: 0x05, name: 'AF_C_TRACKING', description: '[AF-C] Tracking Subject motion' },
-                { value: 0x06, name: 'AF_C_FOCUSED', description: '[AF-C] Focused State' },
-                { value: 0x07, name: 'AF_C_NOT_FOCUSED', description: '[AF-C] Not Focused and Low Contrast State' },
-                { value: 0x08, name: 'UNPAUSE', description: 'Unpause' },
-                { value: 0x09, name: 'PAUSE', description: 'Pause' },
-            ] as const,
-            registry.codecs.uint8
-        ),
+    codec: FocusIndicationCodec,
 } as const satisfies PropertyDefinition
 
 export const sonyPropertyRegistry = {

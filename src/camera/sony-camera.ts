@@ -6,8 +6,9 @@ import { randomSessionId } from '@ptp/definitions/session'
 import { VendorIDs } from '@ptp/definitions/vendor-ids'
 import { createSonyRegistry, type SonyRegistry } from '@ptp/registry'
 import type { CodecType } from '@ptp/types/codec'
-import type { EventData } from '@ptp/types/event'
+import { EventDefinition } from '@ptp/types/event'
 import type { PropertyDefinition } from '@ptp/types/property'
+import { EventParams } from '@ptp/types/type-helpers'
 import { DeviceDescriptor } from '@transport/interfaces/device.interface'
 import { TransportInterface } from '@transport/interfaces/transport.interface'
 import { GenericCamera } from './generic-camera'
@@ -107,13 +108,13 @@ export class SonyCamera extends GenericCamera {
         }
     }
 
-    on<E extends { name: string }>(event: E, handler: (event: EventData) => void): void {
-        this.emitter.on(event.name, handler)
+    on<E extends EventDefinition>(event: E, handler: (params: EventParams<E>) => void): void {
+        this.emitter.on<EventParams<E>>(event.name, handler)
     }
 
-    off<E extends { name: string }>(event: E, handler?: (event: EventData) => void): void {
+    off<E extends EventDefinition>(event: E, handler?: (params: EventParams<E>) => void): void {
         if (handler) {
-            this.emitter.off(event.name, handler)
+            this.emitter.off<EventParams<E>>(event.name, handler)
         } else {
             this.emitter.removeAllListeners(event.name)
         }
@@ -146,30 +147,30 @@ export class SonyCamera extends GenericCamera {
     async captureImage(): Promise<{ info: ObjectInfo; data: Uint8Array } | null> {
         await this.set(this.registry.properties.S1S2Button, 'DOWN')
 
-        let retries = 0
-        while (retries < 50) {
-            const readyResponse = await this.get(this.registry.properties.FocusIndication)
-
-            console.log('readyResponse', readyResponse)
-            if (readyResponse === 'AF_S_FOCUSED' || readyResponse === 'AF_C_FOCUSED') {break
+        let isFocused = false
+        this.on(this.registry.events.SDIE_AFStatus, event => {
+            if (event.Status === 'AF_C_FOCUSED' || event.Status === 'AF_S_FOCUSED') {
+                isFocused = true
             }
-
-            await new Promise(resolve => setTimeout(resolve, 10))
-            retries++
-        }
-
-        this.on(this.registry.events.SDIE_CapturedEvent, event => {
-            console.log('CaptureComplete event:', event)
         })
+        while (!isFocused) {
+            await new Promise(resolve => setTimeout(resolve, 10))
+            console.log('Waiting for focus...')
+        }
 
         // Release the button to capture
         await this.set(this.registry.properties.S1S2Button, 'UP')
 
-        await new Promise(resolve => setTimeout(resolve, 500))
+        await new Promise(resolve => setTimeout(resolve, 5000))
 
-        const objectInfoResponse = await this.send(this.registry.operations.GetObjectInfo, {
-            ObjectHandle: SONY_CAPTURED_IMAGE_OBJECT_HANDLE,
-        })
+        const objectInfoResponse = await this.send(
+            this.registry.operations.GetObjectInfo,
+            {
+                ObjectHandle: SONY_CAPTURED_IMAGE_OBJECT_HANDLE,
+            },
+            undefined,
+            10 * 1024 * 1024
+        )
 
         if (!objectInfoResponse.data) {
             return null

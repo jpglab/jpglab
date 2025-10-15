@@ -1,3 +1,4 @@
+import { baseCodecs } from '@ptp/types/codec'
 import { EventDefinition } from '@ptp/types/event'
 
 export const Undefined = {
@@ -22,7 +23,7 @@ export const ObjectAdded = {
         {
             name: 'ObjectHandle',
             description: 'Handle of the new object',
-            type: 'ObjectHandle',
+            codec: baseCodecs.uint32,
         },
     ],
 } as const satisfies EventDefinition
@@ -35,7 +36,7 @@ export const ObjectRemoved = {
         {
             name: 'ObjectHandle',
             description: 'Handle of the removed object',
-            type: 'ObjectHandle',
+            codec: baseCodecs.uint32,
         },
     ],
 } as const satisfies EventDefinition
@@ -48,7 +49,7 @@ export const StoreAdded = {
         {
             name: 'StorageID',
             description: 'ID of the new store',
-            type: 'StorageID',
+            codec: baseCodecs.uint32,
         },
     ],
 } as const satisfies EventDefinition
@@ -61,7 +62,7 @@ export const StoreRemoved = {
         {
             name: 'StorageID',
             description: 'ID of the removed store',
-            type: 'StorageID',
+            codec: baseCodecs.uint32,
         },
     ],
 } as const satisfies EventDefinition
@@ -74,7 +75,7 @@ export const DevicePropChanged = {
         {
             name: 'DevicePropCode',
             description: 'Property that changed',
-            type: 'DevicePropCode',
+            codec: baseCodecs.uint16,
         },
     ],
 } as const satisfies EventDefinition
@@ -87,7 +88,7 @@ export const ObjectInfoChanged = {
         {
             name: 'ObjectHandle',
             description: 'Handle of the object',
-            type: 'ObjectHandle',
+            codec: baseCodecs.uint32,
         },
     ],
 } as const satisfies EventDefinition
@@ -107,7 +108,7 @@ export const RequestObjectTransfer = {
         {
             name: 'ObjectHandle',
             description: 'Handle of the requested object',
-            type: 'ObjectHandle',
+            codec: baseCodecs.uint32,
         },
     ],
 } as const satisfies EventDefinition
@@ -120,7 +121,7 @@ export const StoreFull = {
         {
             name: 'StorageID',
             description: 'ID of the full store',
-            type: 'StorageID',
+            codec: baseCodecs.uint32,
         },
     ],
 } as const satisfies EventDefinition
@@ -140,7 +141,7 @@ export const StorageInfoChanged = {
         {
             name: 'StorageID',
             description: 'ID of the changed store',
-            type: 'StorageID',
+            codec: baseCodecs.uint32,
         },
     ],
 } as const satisfies EventDefinition

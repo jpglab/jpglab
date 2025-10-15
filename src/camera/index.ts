@@ -1,10 +1,10 @@
 import { Logger } from '@core/logger'
 import { VendorIDs } from '@ptp/definitions/vendor-ids'
 import type { CodecType } from '@ptp/types/codec'
-import type { EventData } from '@ptp/types/event'
+import { EventDefinition } from '@ptp/types/event'
 import type { OperationDefinition } from '@ptp/types/operation'
 import type { PropertyDefinition } from '@ptp/types/property'
-import { OperationParams, OperationResponse } from '@ptp/types/type-helpers'
+import { EventParams, OperationParams, OperationResponse } from '@ptp/types/type-helpers'
 import { DeviceDescriptor } from '@transport/interfaces/device.interface'
 import { TransportInterface } from '@transport/interfaces/transport.interface'
 import { GenericCamera } from './generic-camera'
@@ -58,12 +58,12 @@ export class Camera {
         return this.instance.set(property, value)
     }
 
-    on(eventName: string, handler: (event: EventData) => void): void {
-        return this.instance.on(eventName as any, handler)
+    on<E extends EventDefinition>(event: E, handler: (params: EventParams<E>) => void): void {
+        return this.instance.on(event, handler)
     }
 
-    off(eventName: string, handler?: (event: EventData) => void): void {
-        return this.instance.off(eventName as any, handler)
+    off<E extends EventDefinition>(event: E, handler?: (params: EventParams<E>) => void): void {
+        return this.instance.off(event, handler)
     }
 
     async getAperture(): Promise<string> {

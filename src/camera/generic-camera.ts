@@ -4,11 +4,10 @@ import { SessionAlreadyOpen } from '@ptp/definitions/response-definitions'
 import { randomSessionId } from '@ptp/definitions/session'
 import { createPTPRegistry, Registry } from '@ptp/registry'
 import type { CodecDefinition, CodecInstance, CodecType } from '@ptp/types/codec'
-import type { EventData } from '@ptp/types/event'
-import { EventEmitter } from '@ptp/types/event'
+import { EventDefinition, EventEmitter } from '@ptp/types/event'
 import type { OperationDefinition } from '@ptp/types/operation'
 import type { PropertyDefinition } from '@ptp/types/property'
-import { EventNames, OperationParams, OperationResponse } from '@ptp/types/type-helpers'
+import { EventParams, OperationParams, OperationResponse } from '@ptp/types/type-helpers'
 import { DeviceDescriptor } from '@transport/interfaces/device.interface'
 import { PTPEvent, TransportInterface } from '@transport/interfaces/transport.interface'
 
@@ -138,12 +137,48 @@ export class GenericCamera {
             if (!data) throw new Error('Data required for dataDirection=in')
             const dataContainer = this.buildData(operation.code, transactionId, data)
 
+            let decodedData: number | bigint | string | object | Uint8Array | undefined = undefined
+            if (data && data.length > 0 && 'dataCodec' in operation && operation.dataCodec) {
+                const codec = this.resolveCodec(operation.dataCodec)
+                const result = codec.decode(data)
+                decodedData = result.value
+            }
+
+            // Decode property values for SetDevicePropValue operations
+            if (
+                data &&
+                data.length > 0 &&
+                !decodedData &&
+                (operation.name.includes('SetDevicePropValue') || operation.name.includes('ControlDevice'))
+            ) {
+                const propCode =
+                    paramsRecord.DevicePropCode !== undefined
+                        ? paramsRecord.DevicePropCode
+                        : paramsRecord.sdiControlCode !== undefined
+                          ? paramsRecord.sdiControlCode
+                          : undefined
+
+                if (propCode !== undefined) {
+                    const property = Object.values(this.registry.properties).find((p: any) => p.code === propCode)
+                    if (property) {
+                        const codec = this.resolveCodec(property.codec)
+                        const result = codec.decode(data)
+                        decodedData = {
+                            propertyName: property.name,
+                            propertyCode: propCode,
+                            value: result.value,
+                        }
+                    }
+                }
+            }
+
             this.logger.updateLog(logId, {
                 dataPhase: {
                     timestamp: Date.now(),
                     direction: 'in',
                     bytes: data.length,
                     encodedData: data,
+                    decodedData,
                     maxDataLength,
                 },
             })
@@ -238,8 +273,34 @@ export class GenericCamera {
             }
         }
 
-        const responseRaw = await this.transport.receive(512, this.sessionId!, transactionId)
+        const responseBufferSize = operation.dataDirection === 'out' ? maxDataLength || 256 * 1024 : 512
+        const responseRaw = await this.transport.receive(responseBufferSize, this.sessionId!, transactionId)
         const responseContainer = this.parseContainer(responseRaw)
+
+        // If data phase had empty payload but response has payload, use response payload as data
+        if (operation.dataDirection === 'out' && (!receivedData || receivedData.length === 0) && responseContainer.payload.length > 0) {
+            receivedData = responseContainer.payload
+
+            // Decode the response payload if we have a dataCodec
+            let decodedData: number | bigint | string | object | Uint8Array | undefined = undefined
+            if ('dataCodec' in operation && operation.dataCodec) {
+                const codec = this.resolveCodec(operation.dataCodec)
+                const result = codec.decode(receivedData)
+                decodedData = result.value
+            }
+
+            // Update the data phase with the actual data from response
+            this.logger.updateLog(logId, {
+                dataPhase: {
+                    timestamp: Date.now(),
+                    direction: 'out',
+                    bytes: receivedData.length,
+                    encodedData: receivedData,
+                    decodedData,
+                    maxDataLength,
+                },
+            })
+        }
 
         this.logger.updateLog(logId, {
             responsePhase: {
@@ -292,13 +353,13 @@ export class GenericCamera {
         await this.send(this.registry.operations.SetDevicePropValue, { DevicePropCode: property.code }, encodedValue)
     }
 
-    on<E extends { name: string }>(event: E, handler: (event: EventData) => void): void {
-        this.emitter.on(event.name, handler)
+    on<E extends EventDefinition>(event: E, handler: (params: EventParams<E>) => void): void {
+        this.emitter.on<EventParams<E>>(event.name, handler)
     }
 
-    off<E extends { name: string }>(event: E, handler?: (event: EventData) => void): void {
+    off<E extends EventDefinition>(event: E, handler?: (params: EventParams<E>) => void): void {
         if (handler) {
-            this.emitter.off(event.name, handler)
+            this.emitter.off<EventParams<E>>(event.name, handler)
         } else {
             this.emitter.removeAllListeners(event.name)
         }
@@ -354,11 +415,44 @@ export class GenericCamera {
     }
 
     protected handleEvent(event: PTPEvent): void {
-        const eventDef = Object.values(this.registry.events).find((e: any) => e.code === event.code)
-        console.log('Event Received:', eventDef, event.parameters)
+        const eventDef = Object.values(this.registry.events).find(e => e.code === event.code) as
+            | EventDefinition
+            | undefined
         if (!eventDef) return
 
-        this.emitter.emit(eventDef.name, event.parameters)
+        // Decode event parameters using their codecs
+        const decodedParams: Record<string, number | bigint | string> = {}
+        const encodedParams = event.parameters || []
+
+        for (let i = 0; i < eventDef.parameters.length; i++) {
+            const paramDef = eventDef.parameters[i]
+            if (!paramDef || i >= encodedParams.length) continue
+
+            const codec = this.resolveCodec(paramDef.codec)
+            const rawValue = encodedParams[i]
+
+            // If raw value is a number/bigint/string, decode it
+            if (typeof rawValue === 'number' || typeof rawValue === 'bigint' || typeof rawValue === 'string') {
+                // Encode to bytes first, then decode to get the proper type
+                const bytes = codec.encode(rawValue)
+                const result = codec.decode(bytes)
+                decodedParams[paramDef.name] = result.value
+            } else {
+                decodedParams[paramDef.name] = rawValue
+            }
+        }
+
+        this.logger.addLog({
+            type: 'ptp_event',
+            level: 'info',
+            sessionId: this.sessionId,
+            eventCode: eventDef.code,
+            eventName: eventDef.name,
+            encodedParams,
+            decodedParams,
+        })
+
+        this.emitter.emit<Record<string, number | bigint | string>>(eventDef.name, decodedParams)
     }
 
     private getNextTransactionId(): number {

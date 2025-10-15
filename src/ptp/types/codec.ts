@@ -472,7 +472,11 @@ export function createBaseCodecs(littleEndian: boolean): BaseCodecRegistry {
 
 export type CodecType<T> =
     T extends CodecBuilder<infer U>
-        ? U
+        ? U extends EnumCodec<infer _BaseType, infer Names>
+            ? Names
+            : U extends CodecInstance<infer V>
+              ? V
+              : U
         : T extends CodecInstance<infer U>
           ? U
           : T extends Uint8Codec
@@ -495,8 +499,8 @@ export type CodecType<T> =
                             ? string
                             : T extends ArrayCodec<infer E>
                               ? E[]
-                              : T extends EnumCodec<infer V>
-                                ? V
+                              : T extends EnumCodec<infer _BaseType, infer Names>
+                                ? Names
                                 : T extends RangeCodec<infer N>
                                   ? N
                                   : T extends CustomCodec<infer C>
