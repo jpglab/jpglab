@@ -70,7 +70,6 @@ type PTPTransferLog = Omit<PTPOperationLog, 'type'> & {
 
 type Log = PTPOperationLog | USBTransferLog | PTPTransferLog | ConsoleLog
 
-// Before adding to logger (no id/timestamp yet)
 type NewLog =
     | Omit<PTPOperationLog, 'id' | 'timestamp'>
     | Omit<USBTransferLog, 'id' | 'timestamp'>
@@ -78,17 +77,17 @@ type NewLog =
     | Omit<ConsoleLog, 'id' | 'timestamp'>
 
 export class Logger {
-    private logs: Map<string, Log[]> = new Map() // key: "sessionId:transactionId"
+    private logs: Map<string, Log[]> = new Map()
     private orderedTransactions: Array<{
-        key: string // "sessionId:transactionId"
-        timestamp: number // earliest timestamp in this transaction
+        key: string
+        timestamp: number
     }> = []
     private config: LoggerConfig
     private nextId: number = 1
     private changeListeners: Array<() => void> = []
     private notifyTimeout: NodeJS.Timeout | null = null
     private inkInstance: { unmount: () => void; waitUntilExit: () => Promise<void> } | null = null
-    private activeTransfers: Map<number, number> = new Map() // objectHandle -> logId
+    private activeTransfers: Map<number, number> = new Map()
     private originalConsole = {
         log: console.log.bind(console),
         error: console.error.bind(console),
@@ -99,7 +98,6 @@ export class Logger {
     constructor(config: Partial<LoggerConfig> = {}) {
         this.config = { ...defaultLoggerConfig, ...config }
 
-        // Auto-render ink logger in Node.js environment
         if (typeof window === 'undefined' && typeof process !== 'undefined') {
             this.captureConsole()
             this.setupInkRenderer()
@@ -109,7 +107,6 @@ export class Logger {
     private captureConsole() {
         const createWrapper = (consoleLevel: 'log' | 'error' | 'info' | 'warn') => {
             return (...args: (number | bigint | string | boolean | null | undefined | object)[]) => {
-                // Add to logger as a console log entry
                 this.addLog({
                     type: 'console',
                     level: 'info',
@@ -126,28 +123,21 @@ export class Logger {
     }
 
     private setupInkRenderer() {
-        // Dynamically import to avoid bundling issues in browser
         import('react')
             .then(React => {
                 import('ink')
                     .then(({ render }) => {
-                        import('./renderers/ink-simple')
-                            .then(({ InkSimpleLogger }) => {
-                                this.inkInstance = render(React.createElement(InkSimpleLogger, { logger: this }), {
+                        import('./renderers/ink')
+                            .then(({ InkLogger }) => {
+                                this.inkInstance = render(React.createElement(InkLogger, { logger: this }), {
                                     patchConsole: false,
                                 })
                             })
-                            .catch(() => {
-                                // Ink renderer not available, continue without UI
-                            })
+                            .catch(() => {})
                     })
-                    .catch(() => {
-                        // Ink not available, continue without UI
-                    })
+                    .catch(() => {})
             })
-            .catch(() => {
-                // React not available, continue without UI
-            })
+            .catch(() => {})
     }
 
     onChange(listener: () => void) {
@@ -155,7 +145,6 @@ export class Logger {
     }
 
     private notifyChange() {
-        // Debounce notifications - batch rapid updates
         if (this.notifyTimeout) {
             clearTimeout(this.notifyTimeout)
         }
@@ -164,7 +153,7 @@ export class Logger {
                 listener()
             }
             this.notifyTimeout = null
-        }, 10) // Wait 10ms for more updates before notifying
+        }, 10)
     }
 
     private getKey(sessionId: number, transactionId: number): string {
@@ -175,7 +164,6 @@ export class Logger {
         const id = this.nextId++
         const timestamp = Date.now()
 
-        // Console logs don't have sessionId/transactionId, handle separately
         if (log.type === 'console') {
             const consoleLog: ConsoleLog = { ...log, id, timestamp }
             const key = `console:${id}`
@@ -219,7 +207,6 @@ export class Logger {
     }
 
     updateLog(id: number, updates: Partial<Log>): number {
-        // Find log by ID across all transactions
         for (const logs of this.logs.values()) {
             const index = logs.findIndex(l => l.id === id)
             if (index !== -1) {

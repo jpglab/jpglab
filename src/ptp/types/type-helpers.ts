@@ -1,10 +1,5 @@
 import { CodecType } from '@ptp/types/codec'
 
-/**
- * Type helpers for Approach 6 camera implementation
- * Shared across all camera classes
- */
-
 type BuildParamObject<Params extends readonly any[], Acc = {}> = Params extends readonly []
     ? Acc
     : Params extends readonly [infer Head, ...infer Tail]

@@ -1,6 +1,3 @@
-/**
- * USB Container types
- */
 export enum USBContainerType {
     COMMAND = 1,
     DATA = 2,
@@ -8,16 +5,10 @@ export enum USBContainerType {
     EVENT = 4,
 }
 
-/**
- * Convert Uint8Array to Buffer
- */
 export function toBuffer(data: Uint8Array): Buffer {
     return Buffer.from(data)
 }
 
-/**
- * Convert Buffer or any array-like to Uint8Array
- */
 export function toUint8Array(data: Buffer | ArrayBuffer | ArrayLike<number>): Uint8Array {
     if (data instanceof Uint8Array) {
         return data
@@ -25,9 +16,6 @@ export function toUint8Array(data: Buffer | ArrayBuffer | ArrayLike<number>): Ui
     return new Uint8Array(data)
 }
 
-/**
- * USB Container structure
- */
 export interface USBContainer {
     length: number
     type: USBContainerType
@@ -36,10 +24,6 @@ export interface USBContainer {
     payload: Uint8Array
 }
 
-/**
- * USB Container Builder
- * Handles building and parsing PTP containers for USB transport
- */
 export class USBContainerBuilder {
     static buildCommand(operationCode: number, transactionId: number, parameters: Uint8Array[]): Uint8Array {
         const payloadSize = parameters.reduce((sum, param) => sum + param.length, 0)
@@ -76,9 +60,6 @@ export class USBContainerBuilder {
         return buffer
     }
 
-    /**
-     * Parse a container with optional type validation
-     */
     static parseContainer(data: Uint8Array, expectedType?: USBContainerType): USBContainer {
         if (data.length < 12) {
             throw new Error(`Invalid container: too short (${data.length} bytes)`)
@@ -91,7 +72,6 @@ export class USBContainerBuilder {
         const code = view.getUint16(6, true)
         const transactionId = view.getUint32(8, true)
 
-        // Validate type if expected type is provided
         if (expectedType !== undefined && type !== expectedType) {
             const typeName = ['undefined', 'command', 'data', 'response', 'event'][expectedType] || 'unknown'
             throw new Error(`Expected ${typeName} container, got type ${type}`)
@@ -108,7 +88,6 @@ export class USBContainerBuilder {
         }
     }
 
-    // Convenience methods for type-specific parsing
     static parseResponse(data: Uint8Array): USBContainer {
         return this.parseContainer(data, USBContainerType.RESPONSE)
     }

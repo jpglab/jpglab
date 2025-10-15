@@ -20,12 +20,10 @@ export class VariableValueCodec extends CustomCodec<VariableValue> {
     }
 
     encode(value: VariableValue | number | bigint | string): Uint8Array {
-        // If already has rawBytes, use them
         if (value && typeof value === 'object' && 'rawBytes' in value) {
             return value.rawBytes
         }
 
-        // Otherwise encode the raw value
         const datatypeDefinition = getDatatypeByCode(this.dataType)
         if (!datatypeDefinition) {
             throw new Error(`Unknown datatype: 0x${this.dataType.toString(16)}`)
@@ -34,7 +32,6 @@ export class VariableValueCodec extends CustomCodec<VariableValue> {
             throw new Error(`Datatype ${this.dataType} has no codec`)
         }
 
-        // Get codec instance from builder
         const codec =
             typeof datatypeDefinition.codec === 'function'
                 ? datatypeDefinition.codec(this.registry)
@@ -56,7 +53,6 @@ export class VariableValueCodec extends CustomCodec<VariableValue> {
             throw new Error(`Datatype ${this.dataType} has no codec`)
         }
 
-        // Get codec instance from builder
         const codec =
             typeof datatypeDefinition.codec === 'function'
                 ? datatypeDefinition.codec(this.registry)

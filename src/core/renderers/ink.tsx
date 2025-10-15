@@ -9,7 +9,7 @@ import { safeStringify } from './formatters/safe-stringify'
 
 const responseDefinitions = Object.values(responseRegistry)
 
-interface InkSimpleLoggerProps {
+interface InkLoggerProps {
     logger: Logger
 }
 
@@ -23,8 +23,7 @@ interface TransactionGroup {
     timestamp: number
 }
 
-export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
-    // Force re-render when logger changes
+export function InkLogger({ logger }: InkLoggerProps) {
     const [updateCount, forceUpdate] = React.useReducer(x => x + 1, 0)
 
     React.useEffect(() => {
@@ -32,13 +31,11 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
         logger.onChange(listener)
     }, [logger])
 
-    // Group logs by transaction (re-compute on every update)
     const allLogs = logger.getLogs()
     const grouped = new Map<string, TransactionGroup>()
 
     for (const log of allLogs) {
         if (log.type === 'console') {
-            // Console logs get their own group - TypeScript narrows to ConsoleLog
             const key = `console:${log.id}`
             grouped.set(key, {
                 key,
@@ -47,7 +44,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                 timestamp: log.timestamp,
             })
         } else {
-            // PTP logs have sessionId and transactionId - TypeScript narrows
             const key = `${log.sessionId}:${log.transactionId}`
 
             if (!grouped.has(key)) {
@@ -69,7 +65,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
         }
     }
 
-    // Sort all groups by timestamp to interleave console logs and operations
     const allGroups = Array.from(grouped.values()).sort((a, b) => a.timestamp - b.timestamp)
 
     const config = logger.getConfig()
@@ -77,7 +72,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
     return (
         <Box flexDirection="column" rowGap={1}>
             {allGroups.map(group => {
-                // Handle console logs
                 if (group.consoleLog) {
                     const consoleLog = group.consoleLog
                     const colorMap = {
@@ -95,7 +89,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                         .map(arg => (typeof arg === 'object' ? safeStringify(arg) : String(arg)))
                         .join(' ')
 
-                    // Format timestamp
                     const date = new Date(consoleLog.timestamp)
                     const hours24 = date.getHours()
                     const hours = hours24 % 12 || 12
@@ -119,22 +112,18 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                     )
                 }
 
-                // Handle PTP operations
                 if (!group.ptpLog) return null
 
                 const ptpLog = group.ptpLog
                 const operationName = ptpLog.requestPhase.operationName
 
-                // Determine status
                 const hasError = ptpLog.responsePhase && ptpLog.responsePhase.code !== 0x2001
                 const isSuccess = ptpLog.responsePhase && ptpLog.responsePhase.code === 0x2001
                 const isRunning = !ptpLog.responsePhase
 
-                // Calculate timing
                 const startTime = ptpLog.requestPhase.timestamp
                 const endTime = ptpLog.responsePhase?.timestamp || Date.now()
 
-                // For transfer logs, calculate aggregate timing across all chunks
                 let duration: number
                 let dataPhaseTime: number
                 let responsePhaseTime: number
@@ -144,12 +133,10 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                 let transferredBytes = 0
 
                 if (ptpLog.type === 'ptp_transfer') {
-                    // TypeScript narrows to PTPTransferLog
                     transferChunks = ptpLog.chunks
                     totalBytes = ptpLog.totalBytes
                     transferredBytes = ptpLog.transferredBytes
 
-                    // First chunk starts at requestPhase timestamp
                     const firstChunkTime = transferChunks[0]?.timestamp || startTime
                     const lastChunkTime = transferChunks[transferChunks.length - 1]?.timestamp || Date.now()
                     dataPhaseTime = lastChunkTime - firstChunkTime
@@ -164,7 +151,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                         : 0
                 }
 
-                // Format timestamp
                 const date = new Date(ptpLog.timestamp)
                 const hours24 = date.getHours()
                 const hours = hours24 % 12 || 12
@@ -179,7 +165,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
 
                 return (
                     <Box key={group.key} flexDirection="column">
-                        {/* Header */}
                         <Box>
                             <Text bold>{timestamp} </Text>
                             <Text color="blue" bold>
@@ -207,7 +192,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                         </Text>
                         <Text dimColor> │</Text>
 
-                        {/* Request Phase */}
                         <Text>
                             <Text dimColor> {ptpLog.dataPhase || ptpLog.responsePhase ? '├─' : '└─'} </Text>
                             <Text>Sent </Text>
@@ -225,7 +209,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                             </Text>
                         ) : (
                             Object.entries(ptpLog.requestPhase.decodedParams).map(([key, value]) => {
-                                // Format numeric values as hex
                                 const formattedValue =
                                     typeof value === 'number' ? `0x${value.toString(16)}` : safeStringify(value)
                                 return (
@@ -249,7 +232,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                                     </Text>
                                 )
                             })}
-                        {/* USB transfers for request phase */}
                         {!config.collapseUSB &&
                             group.usbLogs
                                 .filter(u => u.phase === 'request')
@@ -266,7 +248,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                                     )
                                 })}
 
-                        {/* Data Phase */}
                         {ptpLog.dataPhase ? (
                             <>
                                 <Text dimColor> │</Text>
@@ -281,20 +262,16 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                                         {dataPhaseTime}ms
                                     </Text>
                                 </Text>
-                                {/* Progress bar for transfer logs */}
                                 {ptpLog.type === 'ptp_transfer' &&
                                     (() => {
-                                        // TypeScript narrows to PTPTransferLog
                                         const percent = totalBytes > 0 ? (transferredBytes / totalBytes) * 100 : 0
                                         const barLength = 30
                                         const filledLength = Math.round((percent / 100) * barLength)
                                         const bar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength)
 
-                                        // Calculate average chunk size
                                         const avgChunkSize =
                                             transferChunks.length > 0 ? transferredBytes / transferChunks.length : 0
 
-                                        // Calculate speed from last chunk
                                         let speedText = ''
                                         if (transferChunks.length >= 2) {
                                             const lastChunk = transferChunks[transferChunks.length - 1]
@@ -346,14 +323,11 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                                         {ptpLog.dataPhase.encodedData.length > 16 ? '...' : ''}]
                                     </Text>
                                 )}
-                                {/* USB transfers for data phase */}
                                 {!config.collapseUSB &&
                                     (() => {
                                         const dataUsbLogs = group.usbLogs.filter(u => u.phase === 'data')
 
-                                        // For transfer logs, show aggregate USB stats across all chunks
                                         if (ptpLog.type === 'ptp_transfer' && dataUsbLogs.length > 0) {
-                                            // TypeScript narrows to PTPTransferLog
                                             const aggTransferredBytes = transferredBytes
                                             const direction = dataUsbLogs[0].direction === 'send' ? 'to' : 'from'
                                             const endpoint = dataUsbLogs[0].endpoint
@@ -368,7 +342,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                                             )
                                         }
 
-                                        // For regular operations, show individual USB transfers
                                         return dataUsbLogs.map(usbLog => {
                                             const direction = usbLog.direction === 'send' ? 'to' : 'from'
                                             return (
@@ -398,7 +371,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                             </>
                         ) : null}
 
-                        {/* Response Phase */}
                         {ptpLog.responsePhase ? (
                             <>
                                 <Text dimColor> │</Text>
@@ -423,7 +395,6 @@ export function InkSimpleLogger({ logger }: InkSimpleLoggerProps) {
                                         return responseDef ? ` - ${responseDef.description}` : ''
                                     })()}
                                 </Text>
-                                {/* USB transfers for response phase */}
                                 {!config.collapseUSB &&
                                     group.usbLogs
                                         .filter(u => u.phase === 'response')

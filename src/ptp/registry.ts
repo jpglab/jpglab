@@ -11,10 +11,6 @@ import { sonyPropertyRegistry } from '@ptp/definitions/vendors/sony/sony-propert
 import { sonyResponseRegistry } from '@ptp/definitions/vendors/sony/sony-response-definitions'
 import { createBaseCodecs } from '@ptp/types/codec'
 
-/**
- * Create unified PTP registry containing all codecs and definitions
- * Generic registry for standard PTP implementation
- */
 export const createPTPRegistry = (littleEndian: boolean) =>
     ({
         codecs: createBaseCodecs(littleEndian),
@@ -25,9 +21,6 @@ export const createPTPRegistry = (littleEndian: boolean) =>
         responses: responseRegistry,
     }) as const
 
-/**
- * Create Sony-specific registry with vendor extensions
- */
 export const createSonyRegistry = (littleEndian: boolean) =>
     ({
         codecs: createBaseCodecs(littleEndian),
@@ -38,9 +31,6 @@ export const createSonyRegistry = (littleEndian: boolean) =>
         responses: { ...responseRegistry, ...sonyResponseRegistry },
     }) as const
 
-/**
- * Create Nikon-specific registry with vendor extensions
- */
 export const createNikonRegistry = (littleEndian: boolean) =>
     ({
         codecs: createBaseCodecs(littleEndian),

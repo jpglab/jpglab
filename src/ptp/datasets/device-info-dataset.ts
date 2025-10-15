@@ -108,25 +108,21 @@ export class DeviceInfoCodec extends CustomCodec<DeviceInfo> {
         const serialNumber = str.decode(buffer, currentOffset)
         currentOffset += serialNumber.bytesRead
 
-        // Decode operation codes to names
         const operationsSupportedDecoded = operationsSupported.value.map(code => {
             const op = Object.values(this.registry.operations).find((o: any) => o.code === code)
             return op?.name || `Unknown_0x${code.toString(16)}`
         })
 
-        // Decode property codes to names
         const devicePropertiesSupportedDecoded = devicePropertiesSupported.value.map(code => {
             const prop = Object.values(this.registry.properties).find((p: any) => p.code === code)
             return prop?.name || `Unknown_0x${code.toString(16)}`
         })
 
-        // Decode event codes to names
         const eventsSupportedDecoded = eventsSupported.value.map(code => {
             const evt = Object.values(this.registry.events).find((e: any) => e.code === code)
             return evt?.name || `Unknown_0x${code.toString(16)}`
         })
 
-        // Decode image format codes to names
         const imageFormatsDecoded = imageFormats.value.map(code => {
             const fmt = Object.values(this.registry.formats).find((f: any) => f.code === code)
             return fmt?.name || `Unknown_0x${code.toString(16)}`

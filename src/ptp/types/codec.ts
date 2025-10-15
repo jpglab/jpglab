@@ -11,13 +11,11 @@ export type PTPRegistry = {
 export type BaseCodecType = 'int8' | 'uint8' | 'int16' | 'uint16' | 'int32' | 'uint32' | 'int64' | 'uint64' | 'string'
 export type CustomCodecType = 'enum' | 'range' | 'array' | 'custom'
 
-// Codec instance interface
 export interface CodecInstance<T> {
     encode(value: T): Uint8Array
     decode(buffer: Uint8Array, offset?: number): { value: T; bytesRead: number }
 }
 
-// Base codec registry type
 export interface BaseCodecRegistry {
     readonly int8: CodecInstance<number>
     readonly uint8: CodecInstance<number>
@@ -30,10 +28,9 @@ export interface BaseCodecRegistry {
     readonly string: CodecInstance<string>
 }
 
-// Codec builder function type - receives PTP registry and returns codec instance
 export type CodecBuilder<T> = (registry: PTPRegistry) => CodecInstance<T>
 
-// Codec definition can be either a builder function or an instance (for backwards compat)
+// Codec definition can be either a builder function or an instance (for backward compatibility)
 export type CodecDefinition<T> = CodecBuilder<T> | CodecInstance<T>
 
 export type EnumValue<T> = {
@@ -42,17 +39,16 @@ export type EnumValue<T> = {
     description: string
 }
 
-// Base class for custom codecs - receives registry in constructor
 export abstract class CustomCodec<T> implements CodecInstance<T> {
     constructor(public readonly registry: PTPRegistry) {}
 
-    // Convenience getters (public for use in anonymous classes)
     public get codecs() {
         return this.registry.codecs
     }
+    // For backward compatibility
     public get baseCodecs() {
         return this.registry.codecs
-    } // For backward compatibility
+    }
 
     abstract encode(value: T): Uint8Array
     abstract decode(buffer: Uint8Array, offset?: number): { value: T; bytesRead: number }
@@ -73,7 +69,6 @@ export class EnumCodec<T> extends CustomCodec<string> {
     }
 
     encode(value: string): Uint8Array {
-        // If value is a string, look it up by name
         if (typeof value === 'string') {
             const enumValue = this.nameToValue.get(value)
             if (!enumValue) {
@@ -81,7 +76,6 @@ export class EnumCodec<T> extends CustomCodec<string> {
             }
             return this.baseCodec.encode(enumValue.value)
         }
-        // Otherwise, treat it as the raw value
         if (!this.valueToName.has(value)) {
             throw new Error(`Invalid enum value: ${value}`)
         }
@@ -400,7 +394,6 @@ export class ArrayCodec<T> extends CustomCodec<T[]> {
     encode(values: T[]): Uint8Array {
         const buffers: Uint8Array[] = []
 
-        // Use uint32 codec from baseCodecs to get correct endianness
         buffers.push(this.baseCodecs.uint32.encode(values.length))
 
         for (const value of values) {
@@ -423,7 +416,6 @@ export class ArrayCodec<T> extends CustomCodec<T[]> {
             throw new Error('Insufficient buffer size for array length')
         }
 
-        // Use uint32 codec from baseCodecs to get correct endianness
         const lengthResult = this.baseCodecs.uint32.decode(buffer, offset)
         const length = lengthResult.value
 
@@ -443,7 +435,6 @@ export class ArrayCodec<T> extends CustomCodec<T[]> {
     }
 }
 
-// Builder functions for base codecs - definitions use these
 export const baseCodecs = {
     int8: (registry: PTPRegistry) => registry.codecs.int8,
     uint8: (registry: PTPRegistry) => registry.codecs.uint8,
@@ -456,7 +447,6 @@ export const baseCodecs = {
     string: (registry: PTPRegistry) => registry.codecs.string,
 } as const
 
-// Create actual codec instances based on endianness
 export function createBaseCodecs(littleEndian: boolean): BaseCodecRegistry {
     return {
         int8: new Int8Codec(),
@@ -471,10 +461,6 @@ export function createBaseCodecs(littleEndian: boolean): BaseCodecRegistry {
     }
 }
 
-/**
- * Type inference from codec definitions (builders or instances)
- * This allows us to infer TypeScript types from codec definitions
- */
 export type CodecType<T> =
     T extends CodecBuilder<infer U>
         ? U

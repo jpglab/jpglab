@@ -2,9 +2,6 @@ import { safeStringify } from './safe-stringify'
 
 const MAX_LINE_WIDTH = 100
 
-/**
- * Generic JSON formatter with line wrapping and proper indentation
- */
 export function formatJSON(
     val: number | bigint | string | boolean | null | undefined | object | Uint8Array,
     indent: number = 0
@@ -29,7 +26,6 @@ export function formatJSON(
             return [baseIndent + '[]']
         }
 
-        // Convert items to strings
         const items = val.map(v => {
             if (typeof v === 'bigint') return v.toString()
             if (typeof v === 'number') return `0x${v.toString(16)}`
@@ -37,13 +33,11 @@ export function formatJSON(
             return safeStringify(v)
         })
 
-        // Try to fit on one line
         const oneLine = `${baseIndent}[${items.join(', ')}]`
         if (oneLine.length <= MAX_LINE_WIDTH) {
             return [oneLine]
         }
 
-        // Wrap across multiple lines
         lines.push(baseIndent + '[')
 
         let currentLine = ''
@@ -54,22 +48,18 @@ export function formatJSON(
             const separator = i < items.length - 1 ? ', ' : ''
 
             if (currentLine === '') {
-                // Start new line
                 currentLine = item + separator
             } else {
-                // Try adding to current line
                 const testLine = currentLine + ' ' + item + separator
                 if ((itemIndent + testLine).length <= MAX_LINE_WIDTH) {
                     currentLine = testLine
                 } else {
-                    // Flush current line and start new one
                     lines.push(itemIndent + currentLine)
                     currentLine = item + separator
                 }
             }
         }
 
-        // Flush remaining line
         if (currentLine) {
             lines.push(itemIndent + currentLine)
         }
@@ -78,7 +68,6 @@ export function formatJSON(
         return lines
     }
 
-    // Object
     const entries = Object.entries(val)
     if (entries.length === 0) {
         return [baseIndent + '{}']
@@ -90,7 +79,6 @@ export function formatJSON(
         const isLast = idx === entries.length - 1
         const comma = isLast ? '' : ','
 
-        // Special handling for large binary data fields
         if (value instanceof Uint8Array && value.length > 100) {
             lines.push(`${baseIndent}  "${key}": <Uint8Array: ${value.length} bytes>${comma}`)
             return
@@ -100,7 +88,6 @@ export function formatJSON(
             if (value.length === 0) {
                 lines.push(`${baseIndent}  "${key}": []${comma}`)
             } else {
-                // Format array
                 const items = value.map(v => {
                     if (typeof v === 'bigint') return v.toString()
                     if (typeof v === 'number') return `0x${v.toString(16)}`
@@ -108,12 +95,10 @@ export function formatJSON(
                     return safeStringify(v)
                 })
 
-                // Try to fit on one line
                 const oneLine = `${baseIndent}  "${key}": [${items.join(', ')}]${comma}`
                 if (oneLine.length <= MAX_LINE_WIDTH) {
                     lines.push(oneLine)
                 } else {
-                    // Wrap array across multiple lines
                     lines.push(`${baseIndent}  "${key}": [`)
 
                     let currentLine = ''
@@ -144,18 +129,15 @@ export function formatJSON(
                 }
             }
         } else if (value && typeof value === 'object' && value !== null) {
-            // Nested object
             const nestedLines = formatJSON(value, indent + 1)
             lines.push(`${baseIndent}  "${key}": ${nestedLines[0].trim()}`)
             for (let i = 1; i < nestedLines.length; i++) {
                 lines.push(nestedLines[i])
             }
-            // Add comma if not last
             if (!isLast && lines[lines.length - 1]) {
                 lines[lines.length - 1] += ','
             }
         } else {
-            // Primitive value
             let formatted: string
             if (typeof value === 'bigint') {
                 formatted = value.toString()
@@ -172,9 +154,6 @@ export function formatJSON(
     return lines
 }
 
-/**
- * Legacy exports for compatibility
- */
 export function formatCompact(
     val: number | bigint | string | boolean | null | undefined | object | Uint8Array,
     indent: number = 0,
@@ -184,6 +163,5 @@ export function formatCompact(
 }
 
 export function wrapArrayItems(items: string[], linePrefix: string, indent: string): string[] {
-    // Legacy compatibility - not used with new formatter
     return [items.join(', ')]
 }

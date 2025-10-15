@@ -1,10 +1,3 @@
-/**
- * GenericCamera - Approach 6 Implementation
- *
- * This is a refactored version that accepts definition objects instead of strings.
- * All runtime functionality is preserved from the original implementation.
- */
-
 import { Logger, PTPTransferLog } from '@core/logger'
 import { ObjectInfo } from '@ptp/datasets/object-info-dataset'
 import { createPTPRegistry, Registry } from '@ptp/registry'
@@ -16,10 +9,6 @@ import type { PropertyDefinition } from '@ptp/types/property'
 import { OperationParams, OperationResponse } from '@ptp/types/type-helpers'
 import { DeviceDescriptor } from '@transport/interfaces/device.interface'
 import { PTPEvent, TransportInterface } from '@transport/interfaces/transport.interface'
-
-// ============================================================================
-// GenericCamera class
-// ============================================================================
 
 export class GenericCamera {
     protected emitter = new EventEmitter()
@@ -40,11 +29,7 @@ export class GenericCamera {
         }
     }
 
-    /**
-     * Connect to device and open session
-     */
     async connect(deviceIdentifier?: DeviceDescriptor): Promise<void> {
-        // Only connect transport if not already connected
         if (!this.transport.isConnected()) {
             await this.transport.connect({ ...deviceIdentifier, ...(this.vendorId && { vendorId: this.vendorId }) })
         }
@@ -52,16 +37,12 @@ export class GenericCamera {
         this.sessionId = Math.floor(Math.random() * 0xffffffff)
         const openResult = await this.send(this.registry.operations.OpenSession, { SessionID: this.sessionId })
 
-        // Handle session already open error
         if (openResult.code === 0x201e) {
             await this.send(this.registry.operations.CloseSession, {})
             await this.send(this.registry.operations.OpenSession, { SessionID: this.sessionId })
         }
     }
 
-    /**
-     * Disconnect from device and close session
-     */
     async disconnect(): Promise<void> {
         this.emitter.removeAllListeners()
 
@@ -73,11 +54,6 @@ export class GenericCamera {
         await this.transport.disconnect()
     }
 
-    /**
-     * Send operation with automatic type inference from definition
-     * Handles both public API and internal use (connect/disconnect/get/set)
-     * Accepts any OperationDefinition to allow vendor cameras to use their extended operations
-     */
     async send<Op extends OperationDefinition>(
         operation: Op,
         params: OperationParams<Op>,
@@ -89,18 +65,15 @@ export class GenericCamera {
         const encodedParams: Uint8Array[] = []
         const paramsRecord: Record<string, number | bigint | string> = params
 
-        // Encode operation parameters
         for (const paramDef of operation.operationParameters) {
             if (!paramDef) continue
 
             let value = paramsRecord[paramDef.name]
 
-            // Use default value if parameter is undefined and has a default
             if (value === undefined && 'defaultValue' in paramDef && paramDef.defaultValue !== undefined) {
                 value = paramDef.defaultValue
             }
 
-            // Skip optional parameters without defaults if undefined
             if (value === undefined && !paramDef.required) continue
 
             if (value === undefined && paramDef.required) {
@@ -111,12 +84,10 @@ export class GenericCamera {
             encodedParams.push(codec.encode(value))
         }
 
-        // Check if this is a partial object operation (for transfer logging)
         const isPartialObjectOp = operation.name.includes('Partial')
         const objectHandleValue = isPartialObjectOp ? paramsRecord.ObjectHandle : null
         const objectHandle: number | null = typeof objectHandleValue === 'number' ? objectHandleValue : null
 
-        // Create or reuse transfer log for partial object operations
         let logId: number
         if (isPartialObjectOp && objectHandle !== null) {
             const existingLogId = this.logger.getActiveTransfer(objectHandle)
@@ -143,7 +114,6 @@ export class GenericCamera {
                 this.logger.registerTransfer(objectHandle, logId)
             }
         } else {
-            // Regular operation - create standard log
             logId = this.logger.addLog({
                 type: 'ptp_operation',
                 level: 'info',
@@ -158,14 +128,11 @@ export class GenericCamera {
             })
         }
 
-        // Build and send COMMAND container
         const commandContainer = this.buildCommand(operation.code, transactionId, encodedParams)
         await this.transport.send(commandContainer, this.sessionId!, transactionId)
 
-        // Handle data phase
         let receivedData: Uint8Array | undefined
         if (operation.dataDirection === 'in') {
-            // Send DATA to camera
             if (!data) throw new Error('Data required for dataDirection=in')
             const dataContainer = this.buildData(operation.code, transactionId, data)
 
@@ -181,13 +148,11 @@ export class GenericCamera {
 
             await this.transport.send(dataContainer, this.sessionId!, transactionId)
         } else if (operation.dataDirection === 'out') {
-            // Receive DATA from camera
             const bufferSize = maxDataLength || 256 * 1024
             const dataRaw = await this.transport.receive(bufferSize, this.sessionId!, transactionId)
             const dataContainer = this.parseContainer(dataRaw)
             receivedData = dataContainer.payload
 
-            // Decode received data if dataCodec is defined
             let decodedData: number | bigint | string | object | Uint8Array | undefined = undefined
             if (receivedData && receivedData.length > 0 && 'dataCodec' in operation && operation.dataCodec) {
                 const codec = this.resolveCodec(operation.dataCodec)
@@ -195,7 +160,6 @@ export class GenericCamera {
                 decodedData = result.value
             }
 
-            // Special handling for property value operations without dataCodec
             if (
                 receivedData &&
                 receivedData.length > 0 &&
@@ -204,10 +168,9 @@ export class GenericCamera {
             ) {
                 const propCode = paramsRecord.DevicePropCode
                 if (propCode !== undefined) {
-                    // Look up property definition in registry to decode value
                     const property = Object.values(this.registry.properties).find(
                         (p: any) => p.code === propCode
-                    ) as any
+                    )
                     if (property) {
                         const codec = this.resolveCodec(property.codec)
                         const result = codec.decode(receivedData)
@@ -220,9 +183,7 @@ export class GenericCamera {
                 }
             }
 
-            // Handle data phase logging
             if (isPartialObjectOp && typeof objectHandle === 'number') {
-                // For partial object operations, add chunk info to transfer log
                 const offsetValue =
                     typeof paramsRecord.Offset === 'number'
                         ? paramsRecord.Offset
@@ -264,7 +225,6 @@ export class GenericCamera {
                     },
                 })
             } else {
-                // Regular operation - standard data phase
                 this.logger.updateLog(logId, {
                     dataPhase: {
                         timestamp: Date.now(),
@@ -278,7 +238,6 @@ export class GenericCamera {
             }
         }
 
-        // Receive RESPONSE
         const responseRaw = await this.transport.receive(512, this.sessionId!, transactionId)
         const responseContainer = this.parseContainer(responseRaw)
 
@@ -289,7 +248,6 @@ export class GenericCamera {
             },
         })
 
-        // Return decoded data if available, but for property operations return raw bytes
         const isPropertyOp = operation.name.includes('GetDevicePropValue')
         const finalData = this.logger.getLogs().find(l => l.id === logId)
         const returnData =
@@ -306,18 +264,12 @@ export class GenericCamera {
         } as OperationResponse<Op>
     }
 
-    /**
-     * Get property with automatic type inference from definition
-     * Returns the full property descriptor decoded by GetDevicePropDesc
-     * Can be overridden by subclasses to use vendor-specific operations
-     */
     async get<P extends PropertyDefinition>(property: P): Promise<CodecType<P['codec']>> {
         if (!property.access.includes('Get')) {
             throw new Error(`Property ${property.name} is not readable`)
         }
 
-        // Use GetDevicePropDesc to get full descriptor including current value
-        const response = await this.send(this.registry.operations.GetDevicePropDesc as any, {
+        const response = await this.send(this.registry.operations.GetDevicePropDesc, {
             DevicePropCode: property.code,
         })
 
@@ -329,10 +281,6 @@ export class GenericCamera {
         return response.data as CodecType<P['codec']>
     }
 
-    /**
-     * Set property with automatic type inference from definition
-     * Can be overridden by subclasses to use vendor-specific operations
-     */
     async set<P extends PropertyDefinition>(property: P, value: CodecType<P['codec']>): Promise<void> {
         if (!property.access.includes('Set')) {
             throw new Error(`Property ${property.name} is not writable`)
@@ -344,16 +292,10 @@ export class GenericCamera {
         await this.send(this.registry.operations.SetDevicePropValue, { DevicePropCode: property.code }, encodedValue)
     }
 
-    /**
-     * Register event listener
-     */
     on(eventName: string, handler: (event: EventData) => void): void {
         this.emitter.on(eventName, handler)
     }
 
-    /**
-     * Unregister event listener
-     */
     off(eventName: string, handler?: (event: EventData) => void): void {
         if (handler) {
             this.emitter.off(eventName, handler)
@@ -362,112 +304,60 @@ export class GenericCamera {
         }
     }
 
-    /**
-     * Handle incoming PTP events from transport
-     */
     protected handleEvent(event: PTPEvent): void {
-        // Look up event definition by code
-        const eventDef = Object.values(this.registry.events).find((e: any) => e.code === event.code) as any
+        const eventDef = Object.values(this.registry.events).find((e: any) => e.code === event.code)
         if (!eventDef) return
 
-        // Emit event parameters as array (compatible with EventData)
         this.emitter.emit(eventDef.name, event.parameters)
     }
 
-    /**
-     * Get aperture value (f-number)
-     * Uses standard PTP FNumber property (0x5007)
-     */
     async getAperture(): Promise<string> {
         return this.get(this.registry.properties.FNumber)
     }
 
-    /**
-     * Set aperture value (f-number)
-     * Uses standard PTP FNumber property (0x5007)
-     */
     async setAperture(value: string): Promise<void> {
         return this.set(this.registry.properties.FNumber, value)
     }
 
-    /**
-     * Get shutter speed
-     * Uses standard PTP ExposureTime property (0x500d)
-     */
     async getShutterSpeed(): Promise<string> {
         return this.get(this.registry.properties.ExposureTime)
     }
 
-    /**
-     * Set shutter speed
-     * Uses standard PTP ExposureTime property (0x500d)
-     */
     async setShutterSpeed(value: string): Promise<void> {
         return this.set(this.registry.properties.ExposureTime, value)
     }
 
-    /**
-     * Get ISO sensitivity
-     * Uses standard PTP ExposureIndex property (0x500f)
-     */
     async getIso(): Promise<string> {
         return this.get(this.registry.properties.ExposureIndex)
     }
 
-    /**
-     * Set ISO sensitivity
-     * Uses standard PTP ExposureIndex property (0x500f)
-     */
     async setIso(value: string): Promise<void> {
         return this.set(this.registry.properties.ExposureIndex, value)
     }
 
-    /**
-     * Capture still image
-     * Uses standard PTP InitiateCapture operation
-     * Note: Generic implementation - vendors may override for better control
-     */
     async captureImage(): Promise<{ info: ObjectInfo; data: Uint8Array } | null> {
         await this.send(this.registry.operations.InitiateCapture, {})
         throw new Error('Image retrieval after capture not implemented in generic camera')
     }
 
-    /**
-     * Capture single live view frame
-     * Must be overridden by vendor cameras
-     */
     async captureLiveView(): Promise<Uint8Array> {
         throw new Error('Live view capture not supported on generic PTP cameras')
     }
 
-    /**
-     * Start video recording
-     * Must be overridden by vendor cameras that support recording
-     */
     async startRecording(): Promise<void> {
         throw new Error('Video recording not supported on generic PTP cameras')
     }
 
-    /**
-     * Stop video recording
-     * Must be overridden by vendor cameras that support recording
-     */
     async stopRecording(): Promise<void> {
         throw new Error('Video recording not supported on generic PTP cameras')
     }
 
-    /**
-     * Get next transaction ID (wraps at 32-bit boundary)
-     */
     private getNextTransactionId(): number {
         this.transactionId = (this.transactionId + 1) & 0xffffffff
         if (this.transactionId === 0) this.transactionId = 1
         return this.transactionId
     }
 
-    /**
-     * Build PTP COMMAND container
-     */
     private buildCommand(code: number, transactionId: number, params: Uint8Array[]): Uint8Array {
         const u16 = this.registry.codecs.uint16
         const u32 = this.registry.codecs.uint32
@@ -477,7 +367,7 @@ export class GenericCamera {
 
         const parts: Uint8Array[] = [
             u32.encode(length),
-            u16.encode(1), // COMMAND type
+            u16.encode(1),
             u16.encode(code),
             u32.encode(transactionId),
             ...params,
@@ -493,9 +383,6 @@ export class GenericCamera {
         return buffer
     }
 
-    /**
-     * Build PTP DATA container
-     */
     private buildData(code: number, transactionId: number, data: Uint8Array): Uint8Array {
         const u16 = this.registry.codecs.uint16
         const u32 = this.registry.codecs.uint32
@@ -504,7 +391,7 @@ export class GenericCamera {
 
         const parts: Uint8Array[] = [
             u32.encode(length),
-            u16.encode(2), // DATA type
+            u16.encode(2),
             u16.encode(code),
             u32.encode(transactionId),
             data,
@@ -520,9 +407,6 @@ export class GenericCamera {
         return buffer
     }
 
-    /**
-     * Parse PTP container (COMMAND, DATA, or RESPONSE)
-     */
     private parseContainer(data: Uint8Array): {
         type: number
         code: number
@@ -559,17 +443,11 @@ export class GenericCamera {
         return { type, code, transactionId, payload }
     }
 
-    /**
-     * Resolve codec definition to codec instance
-     * Handles both codec instances and codec builder functions
-     */
     public resolveCodec<T>(codec: CodecDefinition<T> | CodecDefinition<any>): CodecInstance<T> {
-        // If it's a builder function, call it with full registry
         if (typeof codec === 'function') {
             return codec(this.registry)
         }
 
-        // Otherwise it's already a codec instance
         return codec
     }
 }

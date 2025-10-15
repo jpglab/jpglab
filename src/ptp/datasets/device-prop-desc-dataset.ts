@@ -14,11 +14,9 @@ export interface DevicePropDesc {
     currentValueBytes: Uint8Array
     currentValueDecoded: number | bigint | string
     formFlag: number
-    // Range form fields (when formFlag === 0x01)
     minimumValue?: number | bigint | string
     maximumValue?: number | bigint | string
     stepSize?: number | bigint | string
-    // Enumeration form fields (when formFlag === 0x02)
     numberOfValues?: number
     supportedValuesRaw?: (number | bigint | string)[]
     supportedValuesDecoded?: (number | bigint | string)[]
@@ -90,15 +88,12 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
         const formFlag = formFlagResult.value
         currentOffset += formFlagResult.bytesRead
 
-        // Look up property name from definitions
         const propertyDef = Object.values(this.registry.properties).find((p: any) => p.code === devicePropertyCode)
         const devicePropertyName = propertyDef?.name || `Unknown_0x${devicePropertyCode.toString(16).padStart(4, '0')}`
         const devicePropertyDescription = propertyDef?.description || ''
 
-        // Decode current value using property's codec if available
         let currentValueDecoded: number | bigint | string = currentValueRaw
         if (propertyDef && propertyDef.codec) {
-            // Get codec instance from builder
             const codecInstance =
                 typeof propertyDef.codec === 'function' ? propertyDef.codec(this.registry) : propertyDef.codec
             const decodedResult = codecInstance.decode(currentValueBytes, 0)
@@ -112,9 +107,7 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
         let supportedValuesRaw: (number | bigint | string)[] | undefined = undefined
         let supportedValuesDecoded: (number | bigint | string)[] | undefined = undefined
 
-        // Handle form field based on FormFlag
         if (formFlag === 0x01) {
-            // Range form
             const minResult = valueCodec.decode(buffer, currentOffset)
             minimumValue = minResult.value.value
             currentOffset += minResult.bytesRead
@@ -127,7 +120,6 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
             stepSize = stepResult.value.value
             currentOffset += stepResult.bytesRead
 
-            // Decode range values if codec available
             if (
                 propertyDef &&
                 propertyDef.codec &&
@@ -135,13 +127,11 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
                 maximumValue !== undefined &&
                 stepSize !== undefined
             ) {
-                // Get codec instance from builder
                 const codecInstance =
                     typeof propertyDef.codec === 'function' ? propertyDef.codec(this.registry) : propertyDef.codec
 
                 const datatypeDefinition = getDatatypeByCode(dataType)
                 if (datatypeDefinition?.codec) {
-                    // Get datatype codec instance
                     const datatypeCodec =
                         typeof datatypeDefinition.codec === 'function'
                             ? datatypeDefinition.codec(this.registry)
@@ -157,7 +147,6 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
                 }
             }
         } else if (formFlag === 0x02) {
-            // Enumeration form
             const numValuesResult = u16.decode(buffer, currentOffset)
             numberOfValues = numValuesResult.value
             currentOffset += numValuesResult.bytesRead
@@ -169,16 +158,13 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
                 currentOffset += enumValueResult.bytesRead
             }
 
-            // Decode enum values using property's codec if available
             supportedValuesDecoded = supportedValuesRaw
             if (propertyDef && propertyDef.codec && supportedValuesRaw && supportedValuesRaw.length > 0) {
-                // Get codec instance from builder
                 const codecInstance =
                     typeof propertyDef.codec === 'function' ? propertyDef.codec(this.registry) : propertyDef.codec
 
                 const datatypeDefinition = getDatatypeByCode(dataType)
                 if (datatypeDefinition?.codec) {
-                    // Get datatype codec instance
                     const datatypeCodec =
                         typeof datatypeDefinition.codec === 'function'
                             ? datatypeDefinition.codec(this.registry)
@@ -216,7 +202,3 @@ export class DevicePropDescCodec extends CustomCodec<DevicePropDesc> {
         }
     }
 }
-
-// Standard codec for 2-byte property codes (ISO standard)
-
-// Extended codec for 4-byte property codes (Nikon extended)

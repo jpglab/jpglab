@@ -1,7 +1,3 @@
-/**
- * Format bytes to human-readable string with appropriate unit
- * Uses 1000-based units (KB, MB, GB)
- */
 export function formatBytes(bytes: number, decimals: number = 2): string {
     if (bytes < 1000) {
         return `${bytes} B`

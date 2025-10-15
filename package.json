@@ -19,7 +19,6 @@
         "dist"
     ],
     "scripts": {
-        "compile": "tsc --noEmit",
         "build": "vite build && tsc --emitDeclarationOnly",
         "test": "vitest run",
         "lint": "eslint . --ext .ts,.tsx",

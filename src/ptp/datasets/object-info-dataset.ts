@@ -34,11 +34,9 @@ export class ObjectInfoCodec extends CustomCodec<ObjectInfo> {
 
         buffers.push(u32.encode(value.storageID))
         buffers.push(u16.encode(value.objectFormat))
-        // objectFormatDecoded is not encoded - it's derived from objectFormat
         buffers.push(u16.encode(value.protectionStatus))
         buffers.push(u32.encode(value.objectCompressedSize))
         buffers.push(u16.encode(value.thumbFormat))
-        // thumbFormatDecoded is not encoded - it's derived from thumbFormat
         buffers.push(u32.encode(value.thumbCompressedSize))
         buffers.push(u32.encode(value.thumbPixWidth))
         buffers.push(u32.encode(value.thumbPixHeight))
@@ -129,7 +127,6 @@ export class ObjectInfoCodec extends CustomCodec<ObjectInfo> {
         const keywords = str.decode(buffer, currentOffset)
         currentOffset += keywords.bytesRead
 
-        // Decode format codes to names
         const objectFormatDef = Object.values(this.registry.formats).find((f: any) => f.code === objectFormat.value)
         const objectFormatDecoded = objectFormatDef?.name || `Unknown_0x${objectFormat.value.toString(16)}`
 

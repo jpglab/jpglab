@@ -1,10 +1,3 @@
-/**
- * Camera Factory
- *
- * High-level Camera class that automatically instantiates the correct camera type
- * (Sony, Nikon, or Generic) based on vendor ID, including transport & logger.
- */
-
 import { Logger } from '@core/logger'
 import { VendorIDs } from '@ptp/definitions/vendor-ids'
 import type { CodecType } from '@ptp/types/codec'
@@ -18,14 +11,6 @@ import { GenericCamera } from './generic-camera'
 import { NikonCamera } from './nikon-camera'
 import { SonyCamera } from './sony-camera'
 
-/**
- * Factory function to create the appropriate camera instance based on vendor ID
- *
- * @param vendorId - USB vendor ID of the camera manufacturer
- * @param transport - Transport interface for communication
- * @param logger - Logger instance for tracking operations
- * @returns Appropriate camera instance (SonyCamera, NikonCamera, or GenericCamera)
- */
 export function createCamera(vendorId: number, transport: TransportInterface, logger: Logger): GenericCamera {
     switch (vendorId) {
         case VendorIDs.SONY:
@@ -37,12 +22,6 @@ export function createCamera(vendorId: number, transport: TransportInterface, lo
     }
 }
 
-/**
- * Camera class - high-level factory wrapper
- *
- * Provides a unified interface for creating camera instances.
- * Automatically selects the correct camera implementation based on vendor ID.
- */
 export class Camera {
     private instance: GenericCamera
 
@@ -50,14 +29,10 @@ export class Camera {
         this.instance = createCamera(vendorId, transport, logger)
     }
 
-    /**
-     * Get the underlying camera instance
-     */
     getInstance(): GenericCamera {
         return this.instance
     }
 
-    // Proxy common methods to the instance with proper types
     async connect(deviceIdentifier?: DeviceDescriptor): Promise<void> {
         return this.instance.connect(deviceIdentifier)
     }
@@ -132,7 +107,6 @@ export class Camera {
     }
 }
 
-// Re-export camera classes for direct use if needed
 export { GenericCamera } from './generic-camera'
 export { NikonCamera } from './nikon-camera'
 export { SonyCamera } from './sony-camera'

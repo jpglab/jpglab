@@ -1,6 +1,5 @@
 import { EventDefinition } from '@ptp/types/event'
 
-/** Undefined event */
 export const Undefined = {
     code: 0x4000,
     name: 'Undefined',
@@ -8,7 +7,6 @@ export const Undefined = {
     parameters: [],
 } as const satisfies EventDefinition
 
-/** CancelTransaction event */
 export const CancelTransaction = {
     code: 0x4001,
     name: 'CancelTransaction',
@@ -16,7 +14,6 @@ export const CancelTransaction = {
     parameters: [],
 } as const satisfies EventDefinition
 
-/** ObjectAdded event */
 export const ObjectAdded = {
     code: 0x4002,
     name: 'ObjectAdded',
@@ -30,7 +27,6 @@ export const ObjectAdded = {
     ],
 } as const satisfies EventDefinition
 
-/** ObjectRemoved event */
 export const ObjectRemoved = {
     code: 0x4003,
     name: 'ObjectRemoved',
@@ -44,7 +40,6 @@ export const ObjectRemoved = {
     ],
 } as const satisfies EventDefinition
 
-/** StoreAdded event */
 export const StoreAdded = {
     code: 0x4004,
     name: 'StoreAdded',
@@ -58,7 +53,6 @@ export const StoreAdded = {
     ],
 } as const satisfies EventDefinition
 
-/** StoreRemoved event */
 export const StoreRemoved = {
     code: 0x4005,
     name: 'StoreRemoved',
@@ -72,7 +66,6 @@ export const StoreRemoved = {
     ],
 } as const satisfies EventDefinition
 
-/** DevicePropChanged event */
 export const DevicePropChanged = {
     code: 0x4006,
     name: 'DevicePropChanged',
@@ -86,7 +79,6 @@ export const DevicePropChanged = {
     ],
 } as const satisfies EventDefinition
 
-/** ObjectInfoChanged event */
 export const ObjectInfoChanged = {
     code: 0x4007,
     name: 'ObjectInfoChanged',
@@ -100,7 +92,6 @@ export const ObjectInfoChanged = {
     ],
 } as const satisfies EventDefinition
 
-/** DeviceInfoChanged event */
 export const DeviceInfoChanged = {
     code: 0x4008,
     name: 'DeviceInfoChanged',
@@ -108,7 +99,6 @@ export const DeviceInfoChanged = {
     parameters: [],
 } as const satisfies EventDefinition
 
-/** RequestObjectTransfer event */
 export const RequestObjectTransfer = {
     code: 0x4009,
     name: 'RequestObjectTransfer',
@@ -122,7 +112,6 @@ export const RequestObjectTransfer = {
     ],
 } as const satisfies EventDefinition
 
-/** StoreFull event */
 export const StoreFull = {
     code: 0x400a,
     name: 'StoreFull',
@@ -136,7 +125,6 @@ export const StoreFull = {
     ],
 } as const satisfies EventDefinition
 
-/** DeviceReset event */
 export const DeviceReset = {
     code: 0x400b,
     name: 'DeviceReset',
@@ -144,7 +132,6 @@ export const DeviceReset = {
     parameters: [],
 } as const satisfies EventDefinition
 
-/** StorageInfoChanged event */
 export const StorageInfoChanged = {
     code: 0x400c,
     name: 'StorageInfoChanged',
@@ -158,7 +145,6 @@ export const StorageInfoChanged = {
     ],
 } as const satisfies EventDefinition
 
-/** CaptureComplete event */
 export const CaptureComplete = {
     code: 0x400d,
     name: 'CaptureComplete',
@@ -166,7 +152,6 @@ export const CaptureComplete = {
     parameters: [],
 } as const satisfies EventDefinition
 
-/** UnreportedStatus event */
 export const UnreportedStatus = {
     code: 0x400e,
     name: 'UnreportedStatus',
