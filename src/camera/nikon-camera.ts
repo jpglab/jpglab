@@ -123,6 +123,9 @@ export class NikonCamera extends GenericCamera {
     }
 
     async getObject(objectHandle: number, objectSize: number): Promise<Uint8Array> {
+        // Start transfer tracking
+        this.logger.startTransfer(objectHandle, this.sessionId, 0, 'GetPartialObjectEx', objectSize)
+
         const chunks: Uint8Array[] = []
         let offset = 0
 
@@ -145,17 +148,22 @@ export class NikonCamera extends GenericCamera {
                     MaxSizeUpper: maxSizeUpper,
                 },
                 undefined,
-                // Add 12 bytes for PTP container header (length + type + code + transactionId)
-                offset === 0 ? objectSize + 12 : bytesToRead + 12
+                bytesToRead + 12
             )
 
             if (!chunkResponse.data) {
                 throw new Error('No data received from GetPartialObjectEx')
             }
 
+            // Update transfer progress
+            this.logger.updateTransferProgress(objectHandle, chunkResponse.data.length, this.getCurrentTransactionId())
+
             chunks.push(chunkResponse.data)
             offset += chunkResponse.data.length
         }
+
+        // Complete transfer tracking
+        this.logger.completeTransfer(objectHandle)
 
         // Combine all chunks
         const totalBytes = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
