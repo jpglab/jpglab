@@ -21,6 +21,11 @@ export class NikonCamera extends GenericCamera {
         this.registry = createNikonRegistry(transport.isLittleEndian())
     }
 
+    async disconnect(): Promise<void> {
+        await this.stopLiveView()
+        await super.disconnect()
+    }
+
     async get<P extends PropertyDefinition>(property: P): Promise<CodecType<P['codec']>> {
         if (!property.access.includes('Get')) {
             throw new Error(`Property ${property.name} is not readable`)

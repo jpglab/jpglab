@@ -1,6 +1,7 @@
 import { Logger } from '@core/logger'
 import { ObjectInfo } from '@ptp/datasets/object-info-dataset'
 import { StorageInfo } from '@ptp/datasets/storage-info-dataset'
+import { parseLiveViewDataset } from '@ptp/datasets/vendors/sony/sony-live-view-dataset'
 import { SessionAlreadyOpen } from '@ptp/definitions/response-definitions'
 import { randomSessionId } from '@ptp/definitions/session'
 import { VendorIDs } from '@ptp/definitions/vendor-ids'
@@ -12,7 +13,6 @@ import { EventParams } from '@ptp/types/type-helpers'
 import { DeviceDescriptor } from '@transport/interfaces/device.interface'
 import { TransportInterface } from '@transport/interfaces/transport.interface'
 import { GenericCamera } from './generic-camera'
-import { parseLiveViewDataset } from '@ptp/datasets/vendors/sony/sony-live-view-dataset'
 
 const SONY_LIVE_VIEW_OBJECT_HANDLE = 0xffffc002
 
@@ -59,6 +59,7 @@ export class SonyCamera extends GenericCamera {
 
     async disconnect(): Promise<void> {
         await this.disableContentTransferMode()
+        await this.stopLiveView()
         await super.disconnect()
     }
 
@@ -338,6 +339,14 @@ export class SonyCamera extends GenericCamera {
         }
     }
 
+    private async stopLiveView(): Promise<void> {
+        if (this.liveViewPostViewEnabled) {
+            await this.set(this.registry.properties.SetLiveViewEnable, 'DISABLE')
+            await this.set(this.registry.properties.SetPostViewEnable, 'DISABLE')
+            this.liveViewPostViewEnabled = false
+        }
+    }
+
     private async enableContentTransferMode(): Promise<void> {
         while (!this.contentTransferModeEnabled) {
             await this.send(this.registry.operations.SDIO_SetContentsTransferMode, {
@@ -360,7 +369,7 @@ export class SonyCamera extends GenericCamera {
             })
             await this.waitMs(100)
             this.contentTransferModeEnabled =
-                (await this.get(this.registry.properties.ContentTransferEnable)) === 'ENABLE'  // Keep enabled if still ENABLE
+                (await this.get(this.registry.properties.ContentTransferEnable)) === 'ENABLE' // Keep enabled if still ENABLE
         }
     }
 
