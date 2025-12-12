@@ -25,7 +25,8 @@
         "format": "prettier --write .",
         "clean": "rm -rf dist",
         "all": "npm run compile && npm run lint && npm run format && npm run test && npm run build",
-        "example:web": "cd examples/web && bun i && bun run dev"
+        "example:web": "cd examples/web && bun i && bun run dev",
+        "usb-ids": "bun run src/transport/usb/usb-ids/generate-usb-ids.ts"
     },
     "keywords": [
         "ptp",
