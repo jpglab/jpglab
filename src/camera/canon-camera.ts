@@ -171,13 +171,20 @@ export class CanonCamera extends GenericCamera {
     }
 
     async captureImage({ includeInfo = true, includeData = true }): Promise<{ info?: ObjectInfo; data?: Uint8Array }> {
-        await this.send(this.registry.operations.CanonRemoteReleaseOn, { ReleaseMode: 'FOCUS' })
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        await this.send(this.registry.operations.CanonRemoteReleaseOn, { ReleaseMode: 'SHUTTER' })
-        await this.send(this.registry.operations.CanonRemoteReleaseOff, { ReleaseMode: 'SHUTTER' })
-        await this.send(this.registry.operations.CanonRemoteReleaseOff, { ReleaseMode: 'FOCUS' })
+        // if we do not pause polling, will try to read response of these commands and also read event updates
+        // does not work and causes stall in reading the response from these commands
+        this.isPollingPaused = true
+        try {
+            await this.send(this.registry.operations.CanonRemoteReleaseOn, { ReleaseMode: 'HALF', AFMode: 'AF' })
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            await this.send(this.registry.operations.CanonRemoteReleaseOn, { ReleaseMode: 'FULL', AFMode: 'AF' })
+            await this.send(this.registry.operations.CanonRemoteReleaseOff, { ReleaseMode: 'FULL' })
+            await this.send(this.registry.operations.CanonRemoteReleaseOff, { ReleaseMode: 'HALF' })
 
-        return {}
+            return {}
+        } finally {
+            this.isPollingPaused = false
+        }
     }
 
     async startRecording(): Promise<void> {

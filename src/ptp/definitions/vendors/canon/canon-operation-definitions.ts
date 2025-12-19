@@ -53,7 +53,7 @@ export const CanonSetEventMode = {
 export const CanonRemoteReleaseOn = {
     code: 0x9128,
     name: 'CanonRemoteReleaseOn',
-    description: 'Remote Release On.',
+    description: 'Remote Release On. First parameter: 1=half press, 2=full press, 3=half+full press. Second parameter: 0=AF enabled, 1=AF disabled (MF).',
     dataDirection: 'none',
     operationParameters: [
         {
@@ -63,8 +63,22 @@ export const CanonRemoteReleaseOn = {
                 createEnumCodec(
                     registry,
                     [
-                        { value: 0x00000001, name: 'FOCUS', description: 'Focus Release' },
-                        { value: 0x00000002, name: 'SHUTTER', description: 'Shutter Release' },
+                        { value: 0x00000001, name: 'HALF', description: 'Half Press (Focus)' },
+                        { value: 0x00000002, name: 'FULL', description: 'Full Press (Shutter)' },
+                    ] as const,
+                    registry.codecs.uint32
+                ),
+            required: true,
+        },
+        {
+            name: 'AFMode',
+            description: 'Autofocus mode: 0=AF enabled, 1=AF disabled (Manual Focus)',
+            codec: registry =>
+                createEnumCodec(
+                    registry,
+                    [
+                        { value: 0x00000000, name: 'AF', description: 'Autofocus Enabled' },
+                        { value: 0x00000001, name: 'MF', description: 'Manual Focus' },
                     ] as const,
                     registry.codecs.uint32
                 ),
@@ -77,7 +91,7 @@ export const CanonRemoteReleaseOn = {
 export const CanonRemoteReleaseOff = {
     code: 0x9129,
     name: 'CanonRemoteReleaseOff',
-    description: 'Remote Release Off.',
+    description: 'Remote Release Off. Parameter: 1=release half, 2=release full, 3=release all.',
     dataDirection: 'none',
     operationParameters: [
         {
@@ -87,8 +101,8 @@ export const CanonRemoteReleaseOff = {
                 createEnumCodec(
                     registry,
                     [
-                        { value: 0x00000001, name: 'FOCUS', description: 'Focus Release' },
-                        { value: 0x00000002, name: 'SHUTTER', description: 'Shutter Release' },
+                        { value: 0x00000001, name: 'HALF', description: 'Release Half Press' },
+                        { value: 0x00000002, name: 'FULL', description: 'Release Full Press' },
                     ] as const,
                     registry.codecs.uint32
                 ),
