@@ -152,7 +152,7 @@ export class USBTransport implements TransportInterface {
 
         this.endpoints = this.findEndpoints(alternate)
         this.connected = true
-        await this.nukeDevice()
+        // await this.nukeDevice()
 
         this.listenForInterrupt()
     }
@@ -177,11 +177,29 @@ export class USBTransport implements TransportInterface {
     }
 
     private async nukeDevice(): Promise<void> {
-        await this.classRequestReset()
-        await this.device?.reset()
-        await this.clearHalt(EndpointType.BULK_IN)
-        await this.clearHalt(EndpointType.BULK_OUT)
-        await this.clearHalt(EndpointType.INTERRUPT)
+        try {
+            await this.classRequestReset()
+        } catch (error) {
+            console.error('classRequestReset error:', error)
+        }
+        
+        try {
+            await this.clearHalt(EndpointType.BULK_IN)
+        } catch (error) {
+            console.error('clearHalt BULK_IN error:', error)
+        }
+        
+        try {
+            await this.clearHalt(EndpointType.BULK_OUT)
+        } catch (error) {
+            console.error('clearHalt BULK_OUT error:', error)
+        }
+        
+        try {
+            await this.clearHalt(EndpointType.INTERRUPT)
+        } catch (error) {
+            console.error('clearHalt INTERRUPT error:', error)
+        }
     }
 
     private findPTPInterface(configuration: USBConfiguration): USBInterface | undefined {
