@@ -387,6 +387,7 @@ export const CanonExposureSimMode = {
     access: 'GetSet' as const,
 } as const satisfies PropertyDefinition
 
+// validated, https://julianschroden.com/post/2023-08-19-remote-live-view-using-ptp-ip-on-canon-eos-cameras/
 export const CanonLiveViewMode = {
     code: 0xd1b0,
     name: 'CanonLiveViewMode',
@@ -406,6 +407,9 @@ export const CanonLiveViewMode = {
     access: 'GetSet' as const,
 } as const satisfies PropertyDefinition
 
+// gphoto2 says this is correct, but it actually starts the recording rather than just setting the destination
+// libmtp calls this PTP_DPC_CANON_EOS_EVFRecordStatus
+// https://chromium.googlesource.com/chromium/deps/libmtp/+/4f4fad584e9c2735af5131f15b697376a3327de5/src/ptp.h#1655
 export const CanonRecordingDestination = {
     code: 0xd1b8,
     name: 'CanonRecordingDestination',

@@ -114,6 +114,8 @@ export class USBTransport implements TransportInterface {
             throw new Error('No USB devices available')
         }
 
+        console.log(JSON.stringify(availableDevices, null, 2))
+
         console.log(formatDeviceTable(availableDevices))
 
         const filters = device?.usb?.filters || [{ classCode: 0x06, subclassCode: 0x01 }]
@@ -276,7 +278,7 @@ export class USBTransport implements TransportInterface {
                     error instanceof LibUSBException &&
                     (error.message === 'LIBUSB_TRANSFER_CANCELLED' || error.message === 'LIBUSB_TRANSFER_ERROR')
                 ) {
-                    console.log('Cleared stall on bulk in endpoint')
+                    // Stall cleared
                 }
             }
         } else if (type === EndpointType.BULK_OUT) {
@@ -287,7 +289,7 @@ export class USBTransport implements TransportInterface {
                     error instanceof LibUSBException &&
                     (error.message === 'LIBUSB_TRANSFER_CANCELLED' || error.message === 'LIBUSB_TRANSFER_ERROR')
                 ) {
-                    console.log('Cleared stall on bulk out endpoint')
+                    // Stall cleared
                 }
             }
         } else if (type === EndpointType.INTERRUPT) {
@@ -298,7 +300,7 @@ export class USBTransport implements TransportInterface {
                     error instanceof LibUSBException &&
                     (error.message === 'LIBUSB_TRANSFER_CANCELLED' || error.message === 'LIBUSB_TRANSFER_ERROR')
                 ) {
-                    console.log('Cleared stall on interrupt endpoint')
+                    // Stall cleared
                 }
             }
         }

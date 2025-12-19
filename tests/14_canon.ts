@@ -55,7 +55,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 // await canonCamera.setIso('400')
 // await delay(1000)
 
-await canonCamera.set(CanonLiveViewMode, 'CAMERA_AND_HOST')
+await canonCamera.captureImage({ includeInfo: true, includeData: true })
 await delay(1000)
 
 await canonCamera.startRecording()

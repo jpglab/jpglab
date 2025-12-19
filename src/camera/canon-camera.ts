@@ -24,6 +24,7 @@ import { GenericCamera } from './generic-camera'
 export class CanonCamera extends GenericCamera {
     private eventPollingInterval?: NodeJS.Timeout
     private isPollingPaused = false
+    private liveViewEnabled = false
     private propertyCache = new Map<
         PropertyDefinition,
         { current: CodecType<PropertyDefinition['codec']>; allowed?: CodecType<PropertyDefinition['codec']>[] }
@@ -54,6 +55,7 @@ export class CanonCamera extends GenericCamera {
 
     async disconnect(): Promise<void> {
         this.stopEventPolling()
+        await this.disableLiveView()
         await this.disableRemoteMode()
         await this.disableEventMode()
         await super.disconnect()
@@ -170,6 +172,7 @@ export class CanonCamera extends GenericCamera {
 
     async captureImage({ includeInfo = true, includeData = true }): Promise<{ info?: ObjectInfo; data?: Uint8Array }> {
         await this.send(this.registry.operations.CanonRemoteReleaseOn, { ReleaseMode: 'FOCUS' })
+        await new Promise(resolve => setTimeout(resolve, 1000))
         await this.send(this.registry.operations.CanonRemoteReleaseOn, { ReleaseMode: 'SHUTTER' })
         await this.send(this.registry.operations.CanonRemoteReleaseOff, { ReleaseMode: 'SHUTTER' })
         await this.send(this.registry.operations.CanonRemoteReleaseOff, { ReleaseMode: 'FOCUS' })
@@ -178,6 +181,8 @@ export class CanonCamera extends GenericCamera {
     }
 
     async startRecording(): Promise<void> {
+        await this.enableLiveView()
+
         await this.set(this.registry.properties.CanonRecordingDestination, 'CARD')
     }
 
@@ -318,5 +323,18 @@ export class CanonCamera extends GenericCamera {
         console.log(
             `Initial flush complete: ${this.propertyCache.size} properties cached, ${propertiesWithAllowedValues} properties with allowed values`
         )
+    }
+    private async enableLiveView(): Promise<void> {
+        if (!this.liveViewEnabled) {
+            await this.set(this.registry.properties.CanonLiveViewMode, 'CAMERA_AND_HOST')
+            this.liveViewEnabled = true
+        }
+    }
+
+    private async disableLiveView(): Promise<void> {
+        if (this.liveViewEnabled) {
+            await this.set(this.registry.properties.CanonLiveViewMode, 'CAMERA')
+            this.liveViewEnabled = false
+        }
     }
 }

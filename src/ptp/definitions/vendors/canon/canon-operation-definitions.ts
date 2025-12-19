@@ -152,23 +152,24 @@ export const CanonGetEventData = {
     dataCodec: (registry: PTPRegistry) => new CanonEventDataCodec(registry),
 } as const satisfies OperationDefinition
 
-export const CanonMovieSelectSWOn = {
-    code: 0x9133,
-    name: 'CanonMovieSelectSWOn',
-    description: 'Start movie recording.',
-    dataDirection: 'none',
-    operationParameters: [] as const,
-    responseParameters: [] as const,
-} as const satisfies OperationDefinition
+// not working
+// export const CanonMovieSelectSWOn = {
+//     code: 0x9133,
+//     name: 'CanonMovieSelectSWOn',
+//     description: 'Start movie recording.',
+//     dataDirection: 'none',
+//     operationParameters: [] as const,
+//     responseParameters: [] as const,
+// } as const satisfies OperationDefinition
 
-export const CanonMovieSelectSWOff = {
-    code: 0x9134,
-    name: 'CanonMovieSelectSWOff',
-    description: 'Stop movie recording.',
-    dataDirection: 'none',
-    operationParameters: [] as const,
-    responseParameters: [] as const,
-} as const satisfies OperationDefinition
+// export const CanonMovieSelectSWOff = {
+//     code: 0x9134,
+//     name: 'CanonMovieSelectSWOff',
+//     description: 'Stop movie recording.',
+//     dataDirection: 'none',
+//     operationParameters: [] as const,
+//     responseParameters: [] as const,
+// } as const satisfies OperationDefinition
 
 export const canonOperationRegistry = {
     CanonSetRemoteMode,
@@ -178,8 +179,8 @@ export const canonOperationRegistry = {
     CanonSetDevicePropValue,
     CanonRequestDevicePropValue,
     CanonGetEventData,
-    CanonMovieSelectSWOn,
-    CanonMovieSelectSWOff,
+    // CanonMovieSelectSWOn,
+    // CanonMovieSelectSWOff,
 } as const satisfies { [key: string]: OperationDefinition }
 
 export type CanonOperationDef = (typeof canonOperationRegistry)[keyof typeof canonOperationRegistry]

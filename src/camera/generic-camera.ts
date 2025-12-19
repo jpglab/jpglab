@@ -182,6 +182,26 @@ export class GenericCamera {
             const dataRaw = await this.transport.receive(bufferSize, this.sessionId!, transactionId)
             const dataContainer = this.parseContainer(dataRaw)
             receivedData = dataContainer.payload
+            
+            // If we received a response container instead of data, treat it as the response
+            if (dataContainer.type === 3) {
+                const responseCode = dataContainer.code
+                
+                // Update logger with response phase before returning
+                if (logId !== -1) {
+                    this.logger.updateLog(logId, {
+                        responsePhase: {
+                            timestamp: Date.now(),
+                            code: responseCode,
+                        },
+                    })
+                }
+                
+                return {
+                    code: responseCode,
+                    data: receivedData && receivedData.length > 0 ? receivedData : undefined,
+                } as OperationResponse<Op>
+            }
 
             let decodedData: number | bigint | string | object | Uint8Array | undefined = undefined
             if (receivedData && receivedData.length > 0 && 'dataCodec' in operation && operation.dataCodec) {
@@ -451,7 +471,6 @@ export class GenericCamera {
                 objects: storageObjects,
             }
         }
-        console.log(formatCompact(result))
 
         return result
     }
@@ -540,6 +559,14 @@ export class GenericCamera {
                 decodedParams[paramDef.name] = result.value
             } else {
                 decodedParams[paramDef.name] = rawValue
+            }
+        }
+
+        // If event has a PropertyCode parameter, look up and add PropertyName
+        if (decodedParams.PropertyCode !== undefined && typeof decodedParams.PropertyCode === 'number') {
+            const property = Object.values(this.registry.properties).find(p => p.code === decodedParams.PropertyCode)
+            if (property) {
+                decodedParams.PropertyName = property.name
             }
         }
 
