@@ -22,8 +22,20 @@ import { GenericCamera } from './generic-camera'
  * https://julianschroden.com/post/2023-08-19-remote-live-view-using-ptp-ip-on-canon-eos-cameras/
  */
 export class CanonCamera extends GenericCamera {
-    private eventPollingInterval?: NodeJS.Timeout
-    private isPollingPaused = false
+    private async withoutPolling<T>(fn: () => Promise<T>): Promise<T> {
+        const wasPolling = !!this.pollingInterval
+        if (wasPolling) {
+            this.stopPolling()
+        }
+        try {
+            return await fn()
+        } finally {
+            if (wasPolling) {
+                this.startPolling()
+            }
+        }
+    }
+    private pollingInterval?: NodeJS.Timeout
     private liveViewEnabled = false
     private propertyCache = new Map<
         PropertyDefinition,
@@ -50,11 +62,11 @@ export class CanonCamera extends GenericCamera {
         // Flush initial property dump from camera and cache all properties
         await this.flushInitialEvents()
 
-        this.startEventPolling()
+        this.startPolling()
     }
 
     async disconnect(): Promise<void> {
-        this.stopEventPolling()
+        this.stopPolling()
         await this.disableLiveView()
         await this.disableRemoteMode()
         await this.disableEventMode()
@@ -77,29 +89,27 @@ export class CanonCamera extends GenericCamera {
     }
 
     async set<P extends PropertyDefinition>(property: P, value: CodecType<P['codec']>): Promise<void> {
-        if (!property.access.includes('Set')) {
-            throw new Error(`Property ${property.name} is not writable`)
-        }
+        return this.withoutPolling(async () => {
+            if (!property.access.includes('Set')) {
+                throw new Error(`Property ${property.name} is not writable`)
+            }
 
-        const codec = this.resolveCodec(property.codec)
-        const encodedValue = codec.encode(value)
+            const codec = this.resolveCodec(property.codec)
+            const encodedValue = codec.encode(value)
 
-        const u32Codec = this.registry.codecs.uint32
+            const u32Codec = this.registry.codecs.uint32
 
-        const totalSize = 12
-        const data = new Uint8Array(totalSize)
+            const totalSize = 12
+            const data = new Uint8Array(totalSize)
 
-        const sizeBytes = u32Codec.encode(totalSize)
-        data.set(sizeBytes, 0)
+            const sizeBytes = u32Codec.encode(totalSize)
+            data.set(sizeBytes, 0)
 
-        const propCodeBytes = u32Codec.encode(property.code)
-        data.set(propCodeBytes, 4)
+            const propCodeBytes = u32Codec.encode(property.code)
+            data.set(propCodeBytes, 4)
 
-        data.set(encodedValue, 8)
+            data.set(encodedValue, 8)
 
-        this.isPollingPaused = true
-
-        try {
             let retries = 0
             const maxRetries = 5
 
@@ -132,9 +142,7 @@ export class CanonCamera extends GenericCamera {
                     break
                 }
             }
-        } finally {
-            this.isPollingPaused = false
-        }
+        })
     }
 
     async getAperture(): Promise<string> {
@@ -171,10 +179,7 @@ export class CanonCamera extends GenericCamera {
     }
 
     async captureImage({ includeInfo = true, includeData = true }): Promise<{ info?: ObjectInfo; data?: Uint8Array }> {
-        // if we do not pause polling, will try to read response of these commands and also read event updates
-        // does not work and causes stall in reading the response from these commands
-        this.isPollingPaused = true
-        try {
+        return this.withoutPolling(async () => {
             await this.send(this.registry.operations.CanonRemoteReleaseOn, { ReleaseMode: 'HALF', AFMode: 'AF' })
             await new Promise(resolve => setTimeout(resolve, 1000))
             await this.send(this.registry.operations.CanonRemoteReleaseOn, { ReleaseMode: 'FULL', AFMode: 'AF' })
@@ -182,9 +187,7 @@ export class CanonCamera extends GenericCamera {
             await this.send(this.registry.operations.CanonRemoteReleaseOff, { ReleaseMode: 'HALF' })
 
             return {}
-        } finally {
-            this.isPollingPaused = false
-        }
+        })
     }
 
     async startRecording(): Promise<void> {
@@ -287,16 +290,12 @@ export class CanonCamera extends GenericCamera {
         })
     }
 
-    private startEventPolling(intervalMs: number = 200): void {
-        if (this.eventPollingInterval) {
+    private startPolling(intervalMs: number = 200): void {
+        if (this.pollingInterval) {
             return
         }
 
-        this.eventPollingInterval = setInterval(async () => {
-            if (this.isPollingPaused) {
-                return
-            }
-
+        this.pollingInterval = setInterval(async () => {
             try {
                 const response = await this.send(this.registry.operations.CanonGetEventData, {}, undefined, 50000)
                 if (response.data && Array.isArray(response.data) && response.data.length > 0) {
@@ -306,10 +305,10 @@ export class CanonCamera extends GenericCamera {
         }, intervalMs)
     }
 
-    private stopEventPolling(): void {
-        if (this.eventPollingInterval) {
-            clearInterval(this.eventPollingInterval)
-            this.eventPollingInterval = undefined
+    private stopPolling(): void {
+        if (this.pollingInterval) {
+            clearInterval(this.pollingInterval)
+            this.pollingInterval = undefined
         }
     }
 

@@ -12,7 +12,7 @@ const transport = new USBTransport(logger)
 const canonCamera = new CanonCamera(transport, logger)
 await canonCamera.connect()
 
-await canonCamera.send(GetDeviceInfo, {})
+// await canonCamera.send(GetDeviceInfo, {})
 
 console.log('\n=== Monitoring camera settings (press Ctrl+C to exit) ===\n')
 
