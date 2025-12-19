@@ -1,10 +1,12 @@
 # @jpglab/fuse
 
-**Connect to & control your camera with TypeScript**
+**Connect to & control your camera with 2 lines of TypeScript**
 
 > **Note:** Fuse is in alpha and APIs may change without backwards compatibility.
 
-This library is a comprehensive TypeScript implementation of [ISO-15740:2013](https://www.iso.org/standard/63602.html) which most camera manufacturers from the last 2 decades have used under the hood to accept commands and transmit information. It also contains a partial implementation of various vendor specifications. [`libgphoto2`](https://github.com/gphoto/libgphoto2) and its command line tool [`gphoto2`](https://github.com/gphoto/gphoto2) also use these libraries under the hood.
+This library is a comprehensive TypeScript implementation of [ISO-15740:2013](https://www.iso.org/standard/63602.html) which most camera manufacturers from the last 2 decades have used under the hood to accept commands and transmit information. It also contains an implementation for various vendor specifications including Sony, Nikon, and Canon.
+
+[`libgphoto2`](https://github.com/gphoto/libgphoto2) and its command line tool [`gphoto2`](https://github.com/gphoto/gphoto2) also use these protocols under the hood.
 
 [![npm version](https://img.shields.io/npm/v/@jpglab/fuse)](https://www.npmjs.com/package/@jpglab/fuse)
 [![Bundle Size](https://img.shields.io/badge/bundle%20size-55kB-green)](https://bundlephobia.com/package/@jpglab/fuse)
@@ -20,9 +22,9 @@ This library is a comprehensive TypeScript implementation of [ISO-15740:2013](ht
 - [x] **🎯 Pure TypeScript** - Full type safety and modern DX
 - [x] **✨ Simple API** - Connect and control your camera with minimal code
 - [x] **📷 Vendor Extensions** - Extended features for Sony, Nikon & Canon
-    - **Sony ⍺ Series** - Live view, video recording, SDIO operations
-    - **Nikon Z Series** - Live view, extended properties
-    - **Canon EOS R Series** - Remote control, event polling
+    - **Sony ⍺ Series**
+    - **Nikon Z Series**
+    - **Canon EOS R Series**
 
 ## 🚀 Quick Start
 
