@@ -25,6 +25,7 @@ export class SonyCamera extends GenericCamera {
     constructor(transport: TransportInterface, logger: Logger) {
         super(transport, logger)
         this.registry = createSonyRegistry(transport.isLittleEndian())
+        logger.setRegistry(this.registry)
     }
 
     async connect(device?: DeviceDescriptor): Promise<void> {

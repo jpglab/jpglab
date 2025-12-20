@@ -392,6 +392,73 @@ export class StringCodec {
     }
 }
 
+export type BitfieldFlag = {
+    bit: number
+    name: string
+    description: string
+}
+
+export class BitfieldCodec extends CustomCodec<string> {
+    private readonly flags: readonly BitfieldFlag[]
+    private readonly baseCodec: CodecInstance<number>
+
+    constructor(registry: PTPRegistry, flags: readonly BitfieldFlag[], baseCodec: CodecInstance<number>) {
+        super(registry)
+        this.flags = flags
+        this.baseCodec = baseCodec
+    }
+
+    encode(value: string): Uint8Array {
+        if (value === '' || value === 'none') {
+            return this.baseCodec.encode(0)
+        }
+        // Parse as comma-separated flag names
+        const flagNames = value.split(',').map(s => s.trim())
+        let bits = 0
+        for (const flagName of flagNames) {
+            const flag = this.flags.find(f => f.name === flagName)
+            if (flag) {
+                bits |= 1 << flag.bit
+            }
+        }
+        return this.baseCodec.encode(bits)
+    }
+
+    decode(buffer: Uint8Array, offset = 0): { value: string; bytesRead: number } {
+        const result = this.baseCodec.decode(buffer, offset)
+        const bits = result.value
+        
+        if (bits === 0) {
+            return { value: 'none', bytesRead: result.bytesRead }
+        }
+        
+        const activeFlags = this.flags
+            .filter(flag => !!(bits & (1 << flag.bit)))
+            .map(flag => `${flag.name} (${flag.description})`)
+        
+        return { value: activeFlags.join(', '), bytesRead: result.bytesRead }
+    }
+
+    getFlags(): readonly BitfieldFlag[] {
+        return this.flags
+    }
+
+    getRawValue(value: string): number {
+        if (value === '' || value === 'none') {
+            return 0
+        }
+        const flagNames = value.split(',').map(s => s.trim()).map(s => s.split(' ')[0])
+        let bits = 0
+        for (const flagName of flagNames) {
+            const flag = this.flags.find(f => f.name === flagName)
+            if (flag) {
+                bits |= 1 << flag.bit
+            }
+        }
+        return bits
+    }
+}
+
 export class ArrayCodec<T> extends CustomCodec<T[]> {
     private readonly elementCodec: CodecInstance<T>
 

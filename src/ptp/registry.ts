@@ -7,6 +7,8 @@ import { canonEventRegistry } from '@ptp/definitions/vendors/canon/canon-event-d
 import { canonOperationRegistry } from '@ptp/definitions/vendors/canon/canon-operation-definitions'
 import { canonPropertyRegistry } from '@ptp/definitions/vendors/canon/canon-property-definitions'
 import { nikonOperationRegistry } from '@ptp/definitions/vendors/nikon/nikon-operation-definitions'
+import { nikonPropertyRegistry } from '@ptp/definitions/vendors/nikon/nikon-property-definitions'
+import { nikonResponseRegistry } from '@ptp/definitions/vendors/nikon/nikon-response-definitions'
 import { sonyEventRegistry } from '@ptp/definitions/vendors/sony/sony-event-definitions'
 import { sonyFormatRegistry } from '@ptp/definitions/vendors/sony/sony-format-definitions'
 import { sonyOperationRegistry } from '@ptp/definitions/vendors/sony/sony-operation-definitions'
@@ -38,10 +40,10 @@ export const createNikonRegistry = (littleEndian: boolean) =>
     ({
         codecs: createBaseCodecs(littleEndian),
         operations: { ...genericOperationRegistry, ...nikonOperationRegistry },
-        properties: genericPropertyRegistry,
+        properties: { ...genericPropertyRegistry, ...nikonPropertyRegistry },
         events: genericEventRegistry,
         formats: formatRegistry,
-        responses: responseRegistry,
+        responses: { ...responseRegistry, ...nikonResponseRegistry },
     }) as const
 
 export const createCanonRegistry = (littleEndian: boolean) =>
@@ -59,4 +61,4 @@ export type SonyRegistry = ReturnType<typeof createSonyRegistry>
 export type NikonRegistry = ReturnType<typeof createNikonRegistry>
 export type CanonRegistry = ReturnType<typeof createCanonRegistry>
 
-export type Registry = PTPRegistry | SonyRegistry | NikonRegistry
+export type Registry = PTPRegistry | SonyRegistry | NikonRegistry | CanonRegistry

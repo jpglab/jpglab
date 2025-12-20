@@ -31,6 +31,7 @@ export class GenericCamera {
         this.transport = transport
         this.logger = logger
         this.registry = createPTPRegistry(transport.isLittleEndian())
+        logger.setRegistry(this.registry)
 
         this.transport.on?.(event => this.handleEvent(event))
     }
@@ -71,6 +72,7 @@ export class GenericCamera {
         const encodedParams: Uint8Array[] = []
         const paramsRecord: Record<string, number | bigint | string> = params
 
+        // TODO: Move this to the logger since logger has access to the registry now
         for (const paramDef of operation.operationParameters) {
             if (!paramDef) continue
 

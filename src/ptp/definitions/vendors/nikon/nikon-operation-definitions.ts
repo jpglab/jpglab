@@ -164,6 +164,88 @@ export const GetLiveViewImageEx = {
     responseParameters: [],
 } as const satisfies OperationDefinition
 
+export const StartMovieRecord = {
+    code: 0x920a,
+    name: 'StartMovieRecord',
+    description: 'Start video recording (only accepted during live view)',
+    dataDirection: 'none',
+    operationParameters: [],
+    responseParameters: [],
+} as const satisfies OperationDefinition
+
+export const EndMovieRecord = {
+    code: 0x920b,
+    name: 'EndMovieRecord',
+    description: 'End video recording',
+    dataDirection: 'none',
+    operationParameters: [],
+    responseParameters: [],
+} as const satisfies OperationDefinition
+
+export const ChangeCameraMode = {
+    code: 0x90c2,
+    name: 'ChangeCameraMode',
+    description: 'Switch between PC camera mode and remote mode',
+    dataDirection: 'none',
+    operationParameters: [
+        {
+            name: 'Mode',
+            description: 'Camera mode',
+            codec: registry =>
+                new EnumCodec(
+                    registry,
+                    [
+                        {
+                            value: 0x00,
+                            name: 'PC Camera Mode',
+                            description: 'host commands ignored and uses settings from dial/buttons',
+                        },
+                        {
+                            value: 0x01,
+                            name: 'Remote Mode',
+                            description: 'all dials/buttons ignored and uses commands from host',
+                        },
+                    ],
+                    registry.codecs.uint32
+                ),
+            required: true,
+        },
+    ],
+    responseParameters: [],
+} as const satisfies OperationDefinition
+
+export const ChangeApplicationMode = {
+    code: 0x9435,
+    name: 'ChangeApplicationMode',
+    description: 'Switch application mode on/off',
+    dataDirection: 'none',
+    operationParameters: [
+        {
+            name: 'Mode',
+            description: 'Application Mode',
+            codec: registry =>
+                new EnumCodec(
+                    registry,
+                    [
+                        {
+                            value: 0,
+                            name: 'OFF',
+                            description: 'disallows image playback, deletion, video recording on the camera',
+                        },
+                        {
+                            value: 1,
+                            name: 'ON',
+                            description: 'allows image playback, deletion, video recording on the camera',
+                        },
+                    ],
+                    registry.codecs.uint32
+                ),
+            required: true,
+        },
+    ],
+    responseParameters: [],
+} as const satisfies OperationDefinition
+
 export const nikonOperationRegistry = {
     GetPartialObjectEx,
     GetDevicePropDescEx,
@@ -173,6 +255,10 @@ export const nikonOperationRegistry = {
     StartLiveView,
     EndLiveView,
     GetLiveViewImageEx,
+    StartMovieRecord,
+    EndMovieRecord,
+    ChangeCameraMode,
+    ChangeApplicationMode,
 } as const satisfies { [key: string]: OperationDefinition }
 
 export type NikonOperationDef = (typeof nikonOperationRegistry)[keyof typeof nikonOperationRegistry]

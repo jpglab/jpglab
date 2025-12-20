@@ -1,3 +1,4 @@
+import { Registry } from '@ptp/registry'
 import { LoggerConfig, defaultLoggerConfig } from './logger-config'
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
@@ -98,7 +99,7 @@ export class Logger {
     private changeListeners: Array<() => void> = []
     private notifyTimeout: NodeJS.Timeout | null = null
     private activeTransfers: Map<number, number> = new Map()
-    private responseRegistry: Record<string, { code: number; name: string; description: string }> = {}
+    private registry: Registry | null = null
     private originalConsole = {
         log: console.log.bind(console),
         error: console.error.bind(console),
@@ -286,12 +287,16 @@ export class Logger {
         return this.config
     }
 
-    setResponseRegistry(registry: Record<string, { code: number; name: string; description: string }>): void {
-        this.responseRegistry = registry
+    setRegistry(registry: Registry): void {
+        this.registry = registry
+    }
+
+    getRegistry(): Registry | null {
+        return this.registry
     }
 
     getResponseRegistry(): Record<string, { code: number; name: string; description: string }> {
-        return this.responseRegistry
+        return this.registry?.responses || {}
     }
 
     clear(): void {

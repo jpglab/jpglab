@@ -47,6 +47,7 @@ export class CanonCamera extends GenericCamera {
     constructor(transport: TransportInterface, logger: Logger) {
         super(transport, logger)
         this.registry = createCanonRegistry(transport.isLittleEndian())
+        logger.setRegistry(this.registry)
     }
 
     async connect(device?: DeviceDescriptor): Promise<void> {
