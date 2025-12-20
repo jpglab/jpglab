@@ -1,14 +1,12 @@
 import { Box, Text } from 'ink'
 import Spinner from 'ink-spinner'
 import React from 'react'
-import { OK, responseRegistry } from '../../../ptp/definitions/response-definitions'
+import { OK } from '../../../ptp/definitions/response-definitions'
 import { ConsoleLog, PTPEventLog, PTPOperationLog, PTPTransferLog, USBTransferLog } from '../../logger'
 import { formatBytes } from '../formatters/bytes-formatter'
 import { formatJSON } from '../formatters/compact-formatter'
 import { safeStringify } from '../formatters/safe-stringify'
 import { formatTimestamp } from '../formatters/timestamp-formatter'
-
-const responseDefinitions = Object.values(responseRegistry)
 
 export interface TransactionGroup {
     key: string
@@ -24,9 +22,11 @@ export interface TransactionGroup {
 interface PTPOperationLogEntryProps {
     group: TransactionGroup
     expanded: boolean
+    responseRegistry: Record<string, { code: number; name: string; description: string }>
 }
 
-export function PTPOperationLogEntry({ group, expanded }: PTPOperationLogEntryProps) {
+export function PTPOperationLogEntry({ group, expanded, responseRegistry }: PTPOperationLogEntryProps) {
+    const responseDefinitions = React.useMemo(() => Object.values(responseRegistry), [responseRegistry])
     const ptpLog = group.ptpLog!
     const operationName = ptpLog.requestPhase.operationName
 

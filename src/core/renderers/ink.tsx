@@ -1,9 +1,10 @@
-import { Box, Static, useStdout } from 'ink'
+import { Box, useStdout } from 'ink'
 import React from 'react'
 import { ConsoleLog, Logger, PTPEventLog, PTPOperationLog, PTPTransferLog, USBTransferLog } from '../logger'
 import { ConsoleLogEntry } from './components/ConsoleLogEntry'
 import { EventLogEntry } from './components/EventLogEntry'
 import { PTPOperationLogEntry, TransactionGroup } from './components/PTPOperationLogEntry'
+import { StaticList } from './components/StaticList'
 
 interface InkLoggerProps {
     logger: Logger
@@ -84,25 +85,48 @@ export function InkLogger({ logger }: InkLoggerProps) {
         return { staticGroups: static_, dynamicGroups: dynamic }
     }, [allGroups])
 
+    const responseRegistry = React.useMemo(() => logger.getResponseRegistry(), [logger])
+
     const renderGroup = (group: TransactionGroup) => {
         const expanded = config.expanded ?? true
 
         if (group.consoleLog) {
-            return <ConsoleLogEntry key={group.key} consoleLog={group.consoleLog} expanded={expanded} groupTimestamp={group.timestamp} />
+            return (
+                <ConsoleLogEntry
+                    key={group.key}
+                    consoleLog={group.consoleLog}
+                    expanded={expanded}
+                    groupTimestamp={group.timestamp}
+                />
+            )
         }
 
         if (group.eventLog) {
-            return <EventLogEntry key={group.key} eventLog={group.eventLog} expanded={expanded} groupTimestamp={group.timestamp} />
+            return (
+                <EventLogEntry
+                    key={group.key}
+                    eventLog={group.eventLog}
+                    expanded={expanded}
+                    groupTimestamp={group.timestamp}
+                />
+            )
         }
 
         if (!group.ptpLog) return null
 
-        return <PTPOperationLogEntry key={group.key} group={group} expanded={expanded} />
+        return (
+            <PTPOperationLogEntry
+                key={group.key}
+                group={group}
+                expanded={expanded}
+                responseRegistry={responseRegistry}
+            />
+        )
     }
 
     return (
         <Box flexDirection="column" rowGap={1}>
-            <Static items={staticGroups}>{group => renderGroup(group)}</Static>
+            <StaticList items={staticGroups}>{group => renderGroup(group)}</StaticList>
             {dynamicGroups.map(group => renderGroup(group))}
         </Box>
     )

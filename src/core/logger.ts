@@ -98,6 +98,7 @@ export class Logger {
     private changeListeners: Array<() => void> = []
     private notifyTimeout: NodeJS.Timeout | null = null
     private activeTransfers: Map<number, number> = new Map()
+    private responseRegistry: Record<string, { code: number; name: string; description: string }> = {}
     private originalConsole = {
         log: console.log.bind(console),
         error: console.error.bind(console),
@@ -283,6 +284,14 @@ export class Logger {
 
     getConfig(): LoggerConfig {
         return this.config
+    }
+
+    setResponseRegistry(registry: Record<string, { code: number; name: string; description: string }>): void {
+        this.responseRegistry = registry
+    }
+
+    getResponseRegistry(): Record<string, { code: number; name: string; description: string }> {
+        return this.responseRegistry
     }
 
     clear(): void {
