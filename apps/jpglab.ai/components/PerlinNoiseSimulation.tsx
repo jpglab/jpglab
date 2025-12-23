@@ -133,15 +133,15 @@ export default function PerlinNoiseSimulation() {
         }
 
         const binaryToType = (nw: any, ne: any, se: any, sw: any) => {
-            let a = [nw, ne, se, sw]
+            const a = [nw, ne, se, sw]
             return a.reduce((res: number, x: number) => (res << 1) | x)
         }
 
         const placeLines = (gridValue: number, x: number, y: number) => {
-            let nw = inputValuesRef.current[y][x]
-            let ne = inputValuesRef.current[y][x + 1]
-            let se = inputValuesRef.current[y + 1][x + 1]
-            let sw = inputValuesRef.current[y + 1][x]
+            const nw = inputValuesRef.current[y][x]
+            const ne = inputValuesRef.current[y][x + 1]
+            const se = inputValuesRef.current[y + 1][x + 1]
+            const sw = inputValuesRef.current[y + 1][x]
             let a, b, c, d
 
             switch (gridValue) {
@@ -229,7 +229,7 @@ export default function PerlinNoiseSimulation() {
                     )
                         continue
 
-                    let gridValue = binaryToType(
+                    const gridValue = binaryToType(
                         inputValuesRef.current[y][x] > currentThresholdRef.current ? 1 : 0,
                         inputValuesRef.current[y][x + 1] > currentThresholdRef.current ? 1 : 0,
                         inputValuesRef.current[y + 1][x + 1] > currentThresholdRef.current ? 1 : 0,
